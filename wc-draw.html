@@ -1,0 +1,389 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>World Cup Draw</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,300;9..144,400;9..144,500&family=Outfit:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#f4f1ec;
+    --card:#ffffff;
+    --ink:#1c1c1a;
+    --muted:#8b8780;
+    --line:#e6e1d8;
+    --pitch:#2f5d3a;
+    --accent:#d8482f;
+    --gold:#c79a4b;
+    --tier1:#2f5d3a;
+    --tier2:#3a6b8c;
+    --tier3:#b5742e;
+    --tier4:#7a5c8e;
+    --radius:18px;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html{scroll-behavior:smooth}
+  body{
+    background:var(--bg);
+    color:var(--ink);
+    font-family:'Outfit',sans-serif;
+    font-weight:300;
+    line-height:1.6;
+    -webkit-font-smoothing:antialiased;
+    letter-spacing:.1px;
+  }
+  .wrap{max-width:1180px;margin:0 auto;padding:0 24px}
+
+  /* Header */
+  header{
+    padding:54px 0 30px;
+    text-align:center;
+    position:relative;
+  }
+  .kicker{
+    font-size:12px;
+    letter-spacing:3px;
+    text-transform:uppercase;
+    color:var(--muted);
+    margin-bottom:14px;
+  }
+  h1{
+    font-family:'Fraunces',serif;
+    font-weight:300;
+    font-size:clamp(38px,7vw,76px);
+    line-height:.96;
+    letter-spacing:-1px;
+  }
+  h1 em{font-style:italic;color:var(--accent)}
+  .sub{
+    margin:18px auto 0;
+    max-width:480px;
+    color:var(--muted);
+    font-size:15px;
+  }
+
+  /* Pot / pool bar */
+  .potbar{
+    display:flex;
+    flex-wrap:wrap;
+    gap:14px;
+    justify-content:center;
+    align-items:center;
+    margin:34px 0 8px;
+  }
+  .chip{
+    background:var(--card);
+    border:1px solid var(--line);
+    border-radius:999px;
+    padding:11px 20px;
+    font-size:13px;
+    color:var(--ink);
+    display:flex;
+    align-items:center;
+    gap:9px;
+  }
+  .chip b{font-weight:500}
+  .dot{width:7px;height:7px;border-radius:50%;background:var(--accent)}
+  .chip.pool{background:var(--ink);color:#fff;border-color:var(--ink)}
+  .chip.pool .dot{background:var(--gold)}
+
+  /* Section heads */
+  .section{padding:40px 0}
+  .shead{
+    display:flex;
+    align-items:baseline;
+    gap:14px;
+    margin-bottom:22px;
+  }
+  .shead h2{
+    font-family:'Fraunces',serif;
+    font-weight:400;
+    font-size:26px;
+    letter-spacing:-.3px;
+  }
+  .shead span{color:var(--muted);font-size:13px}
+  .rule{flex:1;height:1px;background:var(--line)}
+
+  /* Tier columns */
+  .tiers{
+    display:grid;
+    grid-template-columns:repeat(4,1fr);
+    gap:18px;
+  }
+  .tier{
+    background:var(--card);
+    border:1px solid var(--line);
+    border-radius:var(--radius);
+    overflow:hidden;
+  }
+  .tier-top{
+    padding:16px 18px;
+    border-bottom:1px solid var(--line);
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+  }
+  .tier-name{
+    display:flex;align-items:center;gap:10px;
+    font-size:13px;letter-spacing:1.5px;text-transform:uppercase;color:var(--muted);
+  }
+  .pip{width:10px;height:10px;border-radius:3px}
+  .t1{background:var(--tier1)} .t2{background:var(--tier2)}
+  .t3{background:var(--tier3)} .t4{background:var(--tier4)}
+  .tier-num{font-family:'Fraunces',serif;font-size:15px;color:var(--ink)}
+  .teamlist{padding:8px 0}
+  .team{
+    padding:11px 18px;
+    font-size:14px;
+    display:flex;align-items:center;gap:11px;
+    border-bottom:1px solid transparent;
+    transition:background .2s;
+  }
+  .team:hover{background:#faf8f3}
+  .flag{font-size:17px;line-height:1}
+
+  /* Players / draw results */
+  .players{
+    display:grid;
+    grid-template-columns:repeat(3,1fr);
+    gap:18px;
+  }
+  .player{
+    background:var(--card);
+    border:1px solid var(--line);
+    border-radius:var(--radius);
+    padding:22px 22px 18px;
+    position:relative;
+    transition:transform .25s ease, box-shadow .25s ease;
+  }
+  .player:hover{transform:translateY(-4px);box-shadow:0 18px 40px -22px rgba(0,0,0,.25)}
+  .pname{
+    font-family:'Fraunces',serif;
+    font-weight:400;
+    font-size:20px;
+    margin-bottom:2px;
+  }
+  .pstake{font-size:12px;color:var(--muted);margin-bottom:16px}
+  .draw{display:flex;flex-direction:column;gap:9px}
+  .drawteam{
+    display:flex;align-items:center;gap:10px;
+    font-size:14px;
+    padding:9px 12px;
+    background:#faf8f3;
+    border:1px solid var(--line);
+    border-radius:11px;
+  }
+  .tag{
+    margin-left:auto;
+    font-size:10px;letter-spacing:.5px;text-transform:uppercase;
+    color:#fff;padding:2px 8px;border-radius:6px;
+  }
+
+  /* CTA / footer */
+  .cta{
+    margin:30px 0 60px;
+    background:var(--pitch);
+    color:#f4f1ec;
+    border-radius:24px;
+    padding:42px 34px;
+    text-align:center;
+    position:relative;
+    overflow:hidden;
+  }
+  .cta::after{
+    content:"";position:absolute;inset:0;
+    background:
+      radial-gradient(circle at 50% 0%, rgba(255,255,255,.07), transparent 60%),
+      repeating-linear-gradient(90deg, rgba(255,255,255,.04) 0 2px, transparent 2px 80px);
+    pointer-events:none;
+  }
+  .cta h3{font-family:'Fraunces',serif;font-weight:300;font-size:30px;margin-bottom:8px}
+  .cta p{color:rgba(244,241,236,.7);font-size:14px;margin-bottom:22px}
+  .btn{
+    display:inline-flex;align-items:center;gap:10px;
+    background:var(--gold);color:#1c1c1a;
+    border:none;border-radius:999px;
+    padding:13px 26px;font-family:'Outfit';font-size:14px;font-weight:500;
+    cursor:pointer;transition:transform .2s;
+  }
+  .btn:hover{transform:scale(1.04)}
+  footer{text-align:center;color:var(--muted);font-size:12px;padding:0 0 40px}
+
+  @media(max-width:880px){
+    .tiers{grid-template-columns:repeat(2,1fr)}
+    .players{grid-template-columns:repeat(2,1fr)}
+  }
+  @media(max-width:560px){
+    .tiers,.players{grid-template-columns:1fr}
+  }
+</style>
+</head>
+<body>
+
+<header class="wrap">
+  <div class="kicker">Office Sweepstake · 2026</div>
+  <h1>The World Cup <em>Draw</em></h1>
+  <p class="sub">Forty-eight nations, four tiers, blind allocation. Everyone in for a hundred, three teams each, winner takes the pot.</p>
+
+  <div class="potbar">
+    <div class="chip"><span class="dot"></span>16 players</div>
+    <div class="chip"><span class="dot"></span>R100 buy-in</div>
+    <div class="chip"><span class="dot"></span>3 teams each</div>
+    <div class="chip pool"><span class="dot"></span><b>R1 600</b> pool</div>
+  </div>
+</header>
+
+<section class="section wrap">
+  <div class="shead">
+    <h2>The Pots</h2>
+    <span>seeded by FIFA ranking</span>
+    <div class="rule"></div>
+  </div>
+
+  <div class="tiers">
+    <div class="tier">
+      <div class="tier-top">
+        <div class="tier-name"><span class="pip t1"></span>Tier 1</div>
+        <div class="tier-num">12</div>
+      </div>
+      <div class="teamlist">
+        <div class="team"><span class="flag">🇦🇷</span>Argentina</div>
+        <div class="team"><span class="flag">🇫🇷</span>France</div>
+        <div class="team"><span class="flag">🇪🇸</span>Spain</div>
+        <div class="team"><span class="flag">🏴󠁧󠁢󠁥󠁮󠁧󠁿</span>England</div>
+        <div class="team"><span class="flag">🇧🇷</span>Brazil</div>
+        <div class="team"><span class="flag">🇵🇹</span>Portugal</div>
+      </div>
+    </div>
+
+    <div class="tier">
+      <div class="tier-top">
+        <div class="tier-name"><span class="pip t2"></span>Tier 2</div>
+        <div class="tier-num">12</div>
+      </div>
+      <div class="teamlist">
+        <div class="team"><span class="flag">🇳🇱</span>Netherlands</div>
+        <div class="team"><span class="flag">🇧🇪</span>Belgium</div>
+        <div class="team"><span class="flag">🇩🇪</span>Germany</div>
+        <div class="team"><span class="flag">🇭🇷</span>Croatia</div>
+        <div class="team"><span class="flag">🇮🇹</span>Italy</div>
+        <div class="team"><span class="flag">🇺🇾</span>Uruguay</div>
+      </div>
+    </div>
+
+    <div class="tier">
+      <div class="tier-top">
+        <div class="tier-name"><span class="pip t3"></span>Tier 3</div>
+        <div class="tier-num">12</div>
+      </div>
+      <div class="teamlist">
+        <div class="team"><span class="flag">🇲🇦</span>Morocco</div>
+        <div class="team"><span class="flag">🇯🇵</span>Japan</div>
+        <div class="team"><span class="flag">🇲🇽</span>Mexico</div>
+        <div class="team"><span class="flag">🇺🇸</span>USA</div>
+        <div class="team"><span class="flag">🇸🇳</span>Senegal</div>
+        <div class="team"><span class="flag">🇨🇭</span>Switzerland</div>
+      </div>
+    </div>
+
+    <div class="tier">
+      <div class="tier-top">
+        <div class="tier-name"><span class="pip t4"></span>Tier 4</div>
+        <div class="tier-num">12</div>
+      </div>
+      <div class="teamlist">
+        <div class="team"><span class="flag">🇿🇦</span>South Africa</div>
+        <div class="team"><span class="flag">🇦🇺</span>Australia</div>
+        <div class="team"><span class="flag">🇬🇭</span>Ghana</div>
+        <div class="team"><span class="flag">🇰🇷</span>South Korea</div>
+        <div class="team"><span class="flag">🇨🇦</span>Canada</div>
+        <div class="team"><span class="flag">🇸🇦</span>Saudi Arabia</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="section wrap">
+  <div class="shead">
+    <h2>The Draw</h2>
+    <span>one team from each tier, plus a wildcard</span>
+    <div class="rule"></div>
+  </div>
+
+  <div class="players">
+    <div class="player">
+      <div class="pname">Luc</div>
+      <div class="pstake">R100 in · 3 teams</div>
+      <div class="draw">
+        <div class="drawteam"><span class="flag">🇫🇷</span>France<span class="tag" style="background:var(--tier1)">T1</span></div>
+        <div class="drawteam"><span class="flag">🇭🇷</span>Croatia<span class="tag" style="background:var(--tier2)">T2</span></div>
+        <div class="drawteam"><span class="flag">🇸🇳</span>Senegal<span class="tag" style="background:var(--tier3)">T3</span></div>
+      </div>
+    </div>
+
+    <div class="player">
+      <div class="pname">Rosie</div>
+      <div class="pstake">R100 in · 3 teams</div>
+      <div class="draw">
+        <div class="drawteam"><span class="flag">🇦🇷</span>Argentina<span class="tag" style="background:var(--tier1)">T1</span></div>
+        <div class="drawteam"><span class="flag">🇮🇹</span>Italy<span class="tag" style="background:var(--tier2)">T2</span></div>
+        <div class="drawteam"><span class="flag">🇰🇷</span>South Korea<span class="tag" style="background:var(--tier4)">T4</span></div>
+      </div>
+    </div>
+
+    <div class="player">
+      <div class="pname">Gemma</div>
+      <div class="pstake">R100 in · 3 teams</div>
+      <div class="draw">
+        <div class="drawteam"><span class="flag">🇧🇷</span>Brazil<span class="tag" style="background:var(--tier1)">T1</span></div>
+        <div class="drawteam"><span class="flag">🇯🇵</span>Japan<span class="tag" style="background:var(--tier3)">T3</span></div>
+        <div class="drawteam"><span class="flag">🇿🇦</span>South Africa<span class="tag" style="background:var(--tier4)">T4</span></div>
+      </div>
+    </div>
+
+    <div class="player">
+      <div class="pname">Freddy</div>
+      <div class="pstake">R100 in · 3 teams</div>
+      <div class="draw">
+        <div class="drawteam"><span class="flag">🇪🇸</span>Spain<span class="tag" style="background:var(--tier1)">T1</span></div>
+        <div class="drawteam"><span class="flag">🇧🇪</span>Belgium<span class="tag" style="background:var(--tier2)">T2</span></div>
+        <div class="drawteam"><span class="flag">🇲🇽</span>Mexico<span class="tag" style="background:var(--tier3)">T3</span></div>
+      </div>
+    </div>
+
+    <div class="player">
+      <div class="pname">Chloe</div>
+      <div class="pstake">R100 in · 3 teams</div>
+      <div class="draw">
+        <div class="drawteam"><span class="flag">🏴󠁧󠁢󠁥󠁮󠁧󠁿</span>England<span class="tag" style="background:var(--tier1)">T1</span></div>
+        <div class="drawteam"><span class="flag">🇳🇱</span>Netherlands<span class="tag" style="background:var(--tier2)">T2</span></div>
+        <div class="drawteam"><span class="flag">🇬🇭</span>Ghana<span class="tag" style="background:var(--tier4)">T4</span></div>
+      </div>
+    </div>
+
+    <div class="player">
+      <div class="pname">Chumba</div>
+      <div class="pstake">R100 in · 3 teams</div>
+      <div class="draw">
+        <div class="drawteam"><span class="flag">🇵🇹</span>Portugal<span class="tag" style="background:var(--tier1)">T1</span></div>
+        <div class="drawteam"><span class="flag">🇲🇦</span>Morocco<span class="tag" style="background:var(--tier3)">T3</span></div>
+        <div class="drawteam"><span class="flag">🇦🇺</span>Australia<span class="tag" style="background:var(--tier4)">T4</span></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="wrap">
+  <div class="cta">
+    <h3>Ready to lock the draw?</h3>
+    <p>Once everyone has paid in, hit draw and the teams allocate blind.</p>
+    <button class="btn" onclick="this.textContent='Draw locked ✓'">Run the draw →</button>
+  </div>
+</section>
+
+<footer class="wrap">Friendly sweepstake · no house edge · pot splits 70 / 20 / 10 by finish</footer>
+
+</body>
+</html>

@@ -1,0 +1,276 @@
+:root{
+  --bg:#f4f1ec;
+  --card:#ffffff;
+  --ink:#1c1c1a;
+  --muted:#8b8780;
+  --line:#e6e1d8;
+  --pitch:#2f5d3a;
+  --accent:#d8482f;
+  --gold:#c79a4b;
+  --tier1:#2f5d3a;
+  --tier2:#3a6b8c;
+  --tier3:#b5742e;
+  --radius:18px;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html{scroll-behavior:smooth;background:var(--bg)}
+body{
+  background:transparent;
+  color:var(--ink);
+  font-family:'Outfit',sans-serif;
+  font-weight:300;
+  line-height:1.6;
+  -webkit-font-smoothing:antialiased;
+  letter-spacing:.1px;
+  min-height:100vh;
+}
+.wrap{max-width:1180px;margin:0 auto;padding:0 22px}
+
+/* ── Sliding photo background (right → left) ───────── */
+.bg-slide{
+  position:fixed;inset:0;z-index:-1;overflow:hidden;pointer-events:none;
+}
+/* A soft veil over the photos so foreground text stays readable. */
+.bg-slide::after{
+  content:"";position:absolute;inset:0;
+  background:linear-gradient(rgba(244,241,236,.55),rgba(244,241,236,.55));
+}
+.bg-track{
+  display:flex;height:100%;width:200%;          /* two copies of the set */
+  animation:bg-scroll 60s linear infinite;
+  will-change:transform;
+}
+.bg-tile{
+  flex:1 0 0;                                    /* evenly spaced tiles */
+  background-size:cover;background-position:center;
+}
+@keyframes bg-scroll{
+  from{transform:translateX(0)}
+  to{transform:translateX(-50%)}                 /* one full set across */
+}
+@media(prefers-reduced-motion:reduce){
+  .bg-track{animation:none}
+}
+
+/* Header */
+header{padding:46px 0 22px;text-align:center;position:relative}
+.kicker{font-size:12px;letter-spacing:3px;text-transform:uppercase;color:var(--muted);margin-bottom:12px}
+h1{font-family:'Fraunces',serif;font-weight:300;font-size:clamp(34px,7vw,68px);line-height:.96;letter-spacing:-1px}
+h1 em{font-style:italic;color:var(--accent)}
+.sub{margin:16px auto 0;max-width:460px;color:var(--muted);font-size:15px}
+
+/* Pot / pool bar */
+.potbar{display:flex;flex-wrap:wrap;gap:12px;justify-content:center;align-items:center;margin:28px 0 8px}
+.chip{background:var(--card);border:1px solid var(--line);border-radius:999px;padding:10px 18px;font-size:13px;color:var(--ink);display:flex;align-items:center;gap:9px}
+.chip b{font-weight:500}
+.dot{width:7px;height:7px;border-radius:50%;background:var(--accent)}
+.chip.pool{background:var(--ink);color:#fff;border-color:var(--ink)}
+.chip.pool .dot{background:var(--gold)}
+
+/* Sections */
+.section{padding:30px 0}
+.shead{display:flex;align-items:baseline;gap:14px;margin-bottom:20px}
+.shead h2{font-family:'Fraunces',serif;font-weight:400;font-size:24px;letter-spacing:-.3px}
+.shead span{color:var(--muted);font-size:13px}
+.rule{flex:1;height:1px;background:var(--line)}
+
+/* Generic card */
+.card{background:var(--card);border:1px solid var(--line);border-radius:var(--radius)}
+
+/* ── Landing / lobby ───────────────────────────── */
+.center-stage{max-width:460px;margin:8px auto 60px;padding:0 22px}
+.panel{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:26px 24px}
+.panel + .panel{margin-top:16px}
+.panel h3{font-family:'Fraunces',serif;font-weight:400;font-size:20px;margin-bottom:4px}
+.panel p.hint{color:var(--muted);font-size:13px;margin-bottom:16px}
+.field{display:flex;flex-direction:column;gap:7px;margin-bottom:14px}
+.field label{font-size:12px;letter-spacing:1px;text-transform:uppercase;color:var(--muted)}
+.field input{
+  font-family:'Outfit',sans-serif;font-size:16px;color:var(--ink);
+  background:#faf8f3;border:1px solid var(--line);border-radius:12px;padding:13px 14px;
+  width:100%;outline:none;transition:border .2s;
+}
+.field input:focus{border-color:var(--gold)}
+.field input.code-input{text-transform:uppercase;letter-spacing:5px;font-weight:500;font-size:20px;text-align:center}
+.or{display:flex;align-items:center;gap:14px;color:var(--muted);font-size:12px;text-transform:uppercase;letter-spacing:2px;margin:4px 0}
+.or::before,.or::after{content:"";flex:1;height:1px;background:var(--line)}
+
+.btn{
+  display:inline-flex;align-items:center;justify-content:center;gap:10px;
+  background:var(--gold);color:#1c1c1a;border:none;border-radius:999px;
+  padding:14px 26px;font-family:'Outfit';font-size:15px;font-weight:500;
+  cursor:pointer;transition:transform .15s,opacity .2s;width:100%;
+}
+.btn:hover:not(:disabled){transform:scale(1.02)}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+.btn.ghost{background:transparent;border:1px solid var(--line);color:var(--ink)}
+.btn.dark{background:var(--ink);color:#fff}
+.btn.big{padding:18px 26px;font-size:17px}
+.err{color:var(--accent);font-size:13px;margin-top:10px;min-height:18px}
+
+/* Code badge */
+.code-badge{
+  display:inline-flex;align-items:center;gap:12px;
+  background:var(--ink);color:#fff;border-radius:14px;padding:14px 22px;
+  font-family:'Fraunces',serif;font-size:30px;letter-spacing:6px;font-weight:400;
+}
+.code-badge small{font-family:'Outfit';font-size:11px;letter-spacing:2px;text-transform:uppercase;color:rgba(255,255,255,.55)}
+
+/* Player roster (lobby) */
+.roster{display:flex;flex-direction:column;gap:9px;margin:18px 0}
+.roster-row{display:flex;align-items:center;gap:12px;padding:11px 14px;background:#faf8f3;border:1px solid var(--line);border-radius:12px;font-size:15px}
+.roster-row .num{width:24px;height:24px;border-radius:50%;background:var(--pitch);color:#fff;font-size:12px;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.roster-row .you{margin-left:auto;font-size:11px;text-transform:uppercase;letter-spacing:1px;color:var(--gold)}
+.roster-row .host-tag{margin-left:auto;font-size:11px;text-transform:uppercase;letter-spacing:1px;color:var(--muted)}
+
+/* ── My games list ─────────────────────────────── */
+.games{display:flex;flex-direction:column;gap:10px;margin:6px 0 4px}
+.gamecard{
+  display:flex;align-items:center;gap:14px;text-align:left;width:100%;
+  background:#faf8f3;border:1px solid var(--line);border-radius:14px;
+  padding:14px 16px;cursor:pointer;font-family:'Outfit';transition:border .2s,transform .15s;
+}
+.gamecard:hover{border-color:var(--gold);transform:translateY(-1px)}
+.gamecard .gc-main{display:flex;flex-direction:column;gap:3px;min-width:0;flex:1}
+.gamecard .gc-name{font-family:'Fraunces',serif;font-size:18px;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.gamecard .gc-meta{font-size:12px;color:var(--muted);display:flex;align-items:center;gap:8px}
+.gamecard .gc-code{font-weight:500;letter-spacing:2px;color:var(--ink)}
+.status-pill{font-size:10px;letter-spacing:1px;text-transform:uppercase;padding:3px 9px;border-radius:999px;white-space:nowrap}
+.status-pill.lobby{background:#f0ece3;color:var(--muted)}
+.status-pill.drawing{background:var(--gold);color:#1c1c1a}
+.status-pill.done{background:var(--pitch);color:#fff}
+.games-empty{color:var(--muted);font-size:14px;text-align:center;padding:6px 0 2px}
+.authtoggle{text-align:center;font-size:13px;color:var(--muted);margin-top:14px}
+.authtoggle button{background:none;border:none;color:var(--accent);font-family:'Outfit';font-size:13px;font-weight:500;cursor:pointer;text-decoration:underline}
+.game-title{font-family:'Fraunces',serif;font-weight:400;font-size:22px;text-align:center;margin-bottom:14px}
+
+/* Turn bar */
+.turnbar{
+  position:sticky;top:0;z-index:5;
+  background:var(--card);border:1px solid var(--line);border-radius:16px;
+  padding:16px 18px;margin:0 0 8px;display:flex;align-items:center;gap:14px;
+  box-shadow:0 10px 30px -22px rgba(0,0,0,.3);
+}
+.turnbar .turn-label{font-size:13px;color:var(--muted)}
+.turnbar .turn-name{font-family:'Fraunces',serif;font-size:20px;font-weight:400}
+.turnbar .turn-tier{font-size:12px;text-transform:uppercase;letter-spacing:1px;color:#fff;padding:3px 9px;border-radius:7px}
+.turnbar .spacer{flex:1}
+.turnbar .btn{width:auto}
+
+/* Tier columns */
+.tiers{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}
+.tier{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);overflow:hidden}
+.tier-top{padding:14px 16px;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between}
+.tier-name{display:flex;align-items:center;gap:10px;font-size:13px;letter-spacing:1.5px;text-transform:uppercase;color:var(--muted)}
+.pip{width:10px;height:10px;border-radius:3px}
+.t1{background:var(--tier1)} .t2{background:var(--tier2)} .t3{background:var(--tier3)}
+.tier-num{font-family:'Fraunces',serif;font-size:15px;color:var(--ink)}
+.teamlist{padding:6px 0}
+.team{padding:9px 16px;font-size:14px;display:flex;align-items:center;gap:11px;transition:opacity .2s}
+.team .flag{font-size:17px;line-height:1}
+.team.taken{opacity:.4}
+.team .owner{margin-left:auto;font-size:11px;color:var(--muted)}
+
+/* Players board */
+.players{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}
+.player{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:20px 20px 16px;position:relative;transition:transform .25s,box-shadow .25s}
+.player.is-turn{box-shadow:0 0 0 2px var(--gold);transform:translateY(-2px)}
+.pname{font-family:'Fraunces',serif;font-weight:400;font-size:19px;margin-bottom:2px;display:flex;align-items:center;gap:8px}
+.pname .badge-you{font-family:'Outfit';font-size:10px;letter-spacing:1px;text-transform:uppercase;color:var(--gold)}
+.pstake{font-size:12px;color:var(--muted);margin-bottom:14px}
+.draw{display:flex;flex-direction:column;gap:9px}
+.drawteam{display:flex;align-items:center;gap:10px;font-size:14px;padding:10px 12px;background:#faf8f3;border:1px solid var(--line);border-radius:11px;min-height:42px}
+.drawteam.empty{color:var(--muted);font-style:italic;opacity:.7}
+.drawteam.revealing{background:#fff;border-style:dashed}
+.drawteam .flag{font-size:17px;line-height:1}
+.drawteam.pop{animation:pop .5s cubic-bezier(.2,1.3,.4,1)}
+.tag{margin-left:auto;font-size:10px;letter-spacing:.5px;text-transform:uppercase;color:#fff;padding:2px 8px;border-radius:6px}
+@keyframes pop{0%{transform:scale(.85);opacity:0}100%{transform:scale(1);opacity:1}}
+
+.spin-flag{display:inline-block;animation:flip .35s steps(1) infinite}
+@keyframes flip{0%{opacity:1}50%{opacity:.25}100%{opacity:1}}
+
+/* Reveal overlay */
+.overlay{position:fixed;inset:0;z-index:50;background:rgba(28,28,26,.92);display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:24px;animation:fade .25s ease}
+@keyframes fade{from{opacity:0}to{opacity:1}}
+.overlay .drum{font-size:13px;letter-spacing:3px;text-transform:uppercase;color:rgba(255,255,255,.6);margin-bottom:18px}
+.overlay .who{font-family:'Fraunces',serif;font-size:clamp(28px,6vw,46px);color:#fff;font-weight:300;margin-bottom:8px}
+.overlay .who em{color:var(--gold);font-style:italic}
+.overlay .reel{font-size:clamp(64px,18vw,120px);line-height:1;margin:14px 0;height:1.1em;animation:reel .12s steps(1) infinite}
+@keyframes reel{0%{transform:translateY(-3px)}50%{transform:translateY(3px)}100%{transform:translateY(-3px)}}
+.overlay .tier-pill{font-size:12px;text-transform:uppercase;letter-spacing:2px;color:#fff;padding:5px 14px;border-radius:999px;display:inline-block}
+
+/* CTA-style footer banner */
+.banner{margin:24px 0 50px;background:var(--pitch);color:#f4f1ec;border-radius:24px;padding:38px 30px;text-align:center;position:relative;overflow:hidden}
+.banner::after{content:"";position:absolute;inset:0;background:radial-gradient(circle at 50% 0%, rgba(255,255,255,.07), transparent 60%),repeating-linear-gradient(90deg, rgba(255,255,255,.04) 0 2px, transparent 2px 80px);pointer-events:none}
+.banner h3{font-family:'Fraunces',serif;font-weight:300;font-size:28px;margin-bottom:8px;position:relative}
+.banner p{color:rgba(244,241,236,.72);font-size:14px;margin-bottom:0;position:relative}
+.banner .winner{font-family:'Fraunces',serif;font-style:italic;color:var(--gold)}
+
+footer{text-align:center;color:var(--muted);font-size:12px;padding:0 0 40px}
+.leave{display:block;margin:0 auto 30px;background:none;border:none;color:var(--muted);font-size:13px;text-decoration:underline;cursor:pointer;font-family:'Outfit'}
+
+/* ── Fixtures ──────────────────────────────────────────── */
+.fx-card{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);overflow:hidden}
+.fx-cardhead{display:flex;align-items:center;justify-content:space-between;padding:14px 18px;border-bottom:1px solid var(--line)}
+.fx-cardlabel{font-size:12px;letter-spacing:1.5px;text-transform:uppercase;color:var(--muted)}
+.fx-morebtn{background:none;border:none;color:var(--accent);font-family:'Outfit';font-size:13px;font-weight:500;cursor:pointer;padding:4px 0}
+.fx-morebtn:hover{text-decoration:underline}
+.fx-empty{padding:22px 18px;color:var(--muted);font-size:14px;text-align:center}
+.fx-list{display:flex;flex-direction:column}
+
+.fx-row{display:grid;grid-template-columns:84px 1fr auto;gap:14px;align-items:center;padding:12px 18px;border-bottom:1px solid var(--line)}
+.fx-row:last-child{border-bottom:none}
+.fx-row.hot{background:#fdf6ee}
+.fx-when{display:flex;flex-direction:column;line-height:1.2}
+.fx-date{font-size:11px;color:var(--muted)}
+.fx-time{font-family:'Fraunces',serif;font-size:16px}
+.fx-match{display:flex;align-items:center;gap:10px;min-width:0}
+.fx-side{display:flex;align-items:center;gap:7px;font-size:14px;flex:1;min-width:0}
+.fx-side.r{justify-content:flex-end;text-align:right}
+.fx-side span:not(.fx-flag){white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.fx-flag{font-size:17px;line-height:1;flex-shrink:0}
+.fx-slot{color:var(--muted);font-style:italic;font-size:13px}
+.fx-v{color:var(--muted);font-size:12px;flex-shrink:0}
+.fx-meta{display:flex;flex-direction:column;align-items:flex-end;gap:3px;text-align:right}
+.fx-badge{font-size:10px;letter-spacing:.5px;text-transform:uppercase;padding:2px 8px;border-radius:6px;background:#f0ece3;color:var(--muted);white-space:nowrap}
+.fx-badge.r-group{background:var(--pitch);color:#fff}
+.fx-badge.r-Final{background:var(--gold);color:#1c1c1a}
+.fx-badge.r-SF,.fx-badge.r-QF,.fx-badge.r-R16,.fx-badge.r-R32,.fx-badge.r-3rd{background:var(--ink);color:#fff}
+.fx-venue{font-size:11px;color:var(--muted);max-width:160px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+/* Drawer */
+.fx-backdrop{position:fixed;inset:0;background:rgba(28,28,26,.45);z-index:60;animation:fade .2s ease}
+.fx-drawer{position:fixed;top:0;right:0;bottom:0;width:min(440px,100%);background:var(--bg);z-index:61;display:flex;flex-direction:column;box-shadow:-20px 0 50px -20px rgba(0,0,0,.4);animation:slidein .28s cubic-bezier(.2,.8,.3,1)}
+@keyframes slidein{from{transform:translateX(100%)}to{transform:translateX(0)}}
+.fx-drawerhead{display:flex;align-items:center;justify-content:space-between;padding:20px 20px 16px;border-bottom:1px solid var(--line);background:var(--card)}
+.fx-drawertitle{font-family:'Fraunces',serif;font-size:22px}
+.fx-drawersub{font-size:12px;color:var(--muted)}
+.fx-close{background:#f0ece3;border:none;width:34px;height:34px;border-radius:50%;font-size:15px;cursor:pointer;color:var(--ink);flex-shrink:0}
+.fx-close:hover{background:#e6e1d8}
+.fx-filter{display:flex;gap:8px;padding:14px 20px;background:var(--card);border-bottom:1px solid var(--line)}
+.fx-chip{background:#f0ece3;border:1px solid var(--line);border-radius:999px;padding:7px 16px;font-family:'Outfit';font-size:13px;color:var(--ink);cursor:pointer}
+.fx-chip.on{background:var(--ink);color:#fff;border-color:var(--ink)}
+.fx-drawerbody{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch}
+.fx-day{padding:0}
+.fx-dayhead{position:sticky;top:0;background:var(--bg);padding:14px 20px 6px;font-size:12px;letter-spacing:1.5px;text-transform:uppercase;color:var(--muted);font-weight:500;z-index:1}
+.fx-drawerbody .fx-row{grid-template-columns:54px 1fr;padding:11px 20px}
+.fx-drawerbody .fx-meta{grid-column:1 / -1;flex-direction:row;align-items:center;justify-content:flex-start;gap:8px;text-align:left;padding-left:68px;margin-top:-4px}
+.fx-drawerbody .fx-venue{max-width:none}
+
+@media(max-width:620px){
+  .fx-row{grid-template-columns:64px 1fr;row-gap:6px}
+  .fx-meta{grid-column:1 / -1;flex-direction:row;align-items:center;gap:8px;padding-left:78px}
+  .fx-venue{max-width:none}
+}
+
+@media(max-width:880px){
+  .tiers{grid-template-columns:repeat(3,1fr)}
+  .players{grid-template-columns:repeat(2,1fr)}
+}
+@media(max-width:620px){
+  .players{grid-template-columns:1fr}
+  .turnbar{flex-wrap:wrap}
+  .turnbar .btn{width:100%}
+  .tiers{grid-template-columns:1fr}
+}
