@@ -1,19 +1,10 @@
 // Presentational bits + pure helpers shared by Live and Local modes.
 import { useEffect, useState } from "react";
-import { ENTRY_FEE, TIERS } from "../convex/pool";
+import { ENTRY_FEE } from "../convex/pool";
 
 export const TIER_VAR = ["", "var(--tier1)", "var(--tier2)", "var(--tier3)"];
 export const TIER_NAME = ["", "Tier 1", "Tier 2", "Tier 3"];
 export const REEL = ["🇧🇷", "🇫🇷", "🇦🇷", "🇪🇸", "🇩🇪", "🇯🇵", "🇲🇦", "🇳🇬", "🇺🇸", "🇵🇹"];
-
-// Snake order: round 0 forward, round 1 reverse, round 2 forward.
-// Each round draws from one tier (round + 1).
-export function whoseTurn(n: number, pickIndex: number) {
-  const round = Math.floor(pickIndex / n);
-  const pos = pickIndex % n;
-  const idx = round % 2 === 0 ? pos : n - 1 - pos;
-  return { idx, tier: round + 1, round };
-}
 
 export function shuffle<T>(arr: T[]): T[] {
   const a = [...arr];
@@ -24,10 +15,39 @@ export function shuffle<T>(arr: T[]): T[] {
   return a;
 }
 
-export function Header({ pool, count }: { pool: number; count: number }) {
+// A round profile picture, falling back to the player's initial when they
+// haven't set one. Used across rosters, squad cards, standings and the header.
+export function Avatar({
+  src,
+  name,
+  size = 28,
+}: {
+  src?: string | null;
+  name: string;
+  size?: number;
+}) {
+  const initial = (name.trim()[0] ?? "?").toUpperCase();
+  return (
+    <span
+      className="avatar"
+      style={{ width: size, height: size, fontSize: Math.round(size * 0.42) }}
+    >
+      {src ? <img src={src} alt="" /> : <span>{initial}</span>}
+    </span>
+  );
+}
+
+export function Header({
+  pool,
+  count,
+  teamsEach,
+}: {
+  pool: number;
+  count: number;
+  teamsEach: number;
+}) {
   return (
     <header className="wrap">
-      <div className="kicker">Friends’ Sweepstake · 2026</div>
       <h1>
         The World Cup <em>Draw</em>
       </h1>
@@ -41,7 +61,7 @@ export function Header({ pool, count }: { pool: number; count: number }) {
         </div>
         <div className="chip">
           <span className="dot" />
-          {TIERS} teams each
+          {teamsEach} teams each
         </div>
         <div className="chip pool">
           <span className="dot" />

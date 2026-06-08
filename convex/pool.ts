@@ -69,3 +69,22 @@ export const POOL: PoolTeam[] = [
 ];
 
 export const TIERS = 3;
+
+// The African nations inside the 48-team pool. The opening "bonus" round lets
+// every player choose one of these — duplicates across players are allowed,
+// so this list is always fully available regardless of the main draw.
+export const AFRICAN_NAMES = [
+  "Morocco",
+  "Senegal",
+  "Egypt",
+  "Algeria",
+  "Ivory Coast",
+  "Tunisia",
+  "South Africa",
+  "DR Congo",
+  "Ghana",
+  "Cape Verde",
+];
+export const AFRICAN_POOL: PoolTeam[] = POOL.filter((t) =>
+  AFRICAN_NAMES.includes(t.name),
+);

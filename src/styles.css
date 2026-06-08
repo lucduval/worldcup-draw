@@ -2,7 +2,7 @@
   --bg:#f4f1ec;
   --card:#ffffff;
   --ink:#1c1c1a;
-  --muted:#8b8780;
+  --muted:#403c36;
   --line:#e6e1d8;
   --pitch:#2f5d3a;
   --accent:#d8482f;
@@ -11,7 +11,15 @@
   --tier2:#3a6b8c;
   --tier3:#b5742e;
   --radius:18px;
+  --header-h:60px;
 }
+/* Small muted text reads a touch bolder than the body weight for legibility. */
+.shead span,.panel p.hint,.field label,.or,.roster-row .host-tag,
+.gamecard .gc-meta,.status-pill.lobby,.games-empty,.authtoggle,
+.turnbar .turn-label,.tier-name,.team .owner,.pstake,.drawteam.empty,
+.afr-pick-label,.fx-cardlabel,.fx-empty,.fx-date,.fx-slot,.fx-v,
+.fx-badge,.fx-venue,.fx-drawersub{font-weight:500}
+
 *{box-sizing:border-box;margin:0;padding:0}
 html{scroll-behavior:smooth;background:var(--bg)}
 body{
@@ -51,13 +59,134 @@ body{
 @media(prefers-reduced-motion:reduce){
   .bg-track{animation:none}
 }
+/* Landing / sign-up gate: full-colour photos sliding right→left, reusing the
+   .bg-track / .bg-tile motion. Rendered after the global sliding tiles (same
+   z-index) so it paints over them — and with no cream veil, so the photos show
+   at full saturation. */
+.auth-slide{
+  position:fixed;inset:0;z-index:-1;overflow:hidden;pointer-events:none;
+}
+/* Subtle dark veil over the photos so the white title + card stay legible. */
+.auth-slide::after{
+  content:"";position:absolute;inset:0;background:rgba(0,0,0,.28);pointer-events:none;
+}
+/* Sign-on title sits on the full-colour photos, so render it white with a
+   soft dark halo for legibility (the "Draw" accent keeps its colour). */
+.auth-head h1{color:#fff;font-weight:400;text-shadow:0 2px 14px rgba(0,0,0,.45)}
+/* Vertically centre the title + sign-on card in the viewport. */
+.auth-screen{
+  min-height:100vh;display:flex;flex-direction:column;
+  align-items:center;justify-content:center;
+  padding:72px 0 40px;
+}
+/* Extra breathing room between the title and the sign-on card. */
+.auth-screen .center-stage{margin-top:40px;width:100%;max-width:409px;padding:0 12px}
+/* Sign-on card scaled up 20% from the shared .panel sizing. Each card sizes to
+   its own content so it stays tight — sign-in is naturally shorter than sign-up
+   (one fewer field), the same way every standard auth form behaves. */
+.auth-screen .panel{padding:31px 29px}
+.auth-screen .panel h3{font-size:24px}
+.auth-screen .panel p.hint{font-size:15px}
+.auth-screen .field input{font-size:17px;padding:16px 14px}
+.auth-screen .btn.big{padding:22px 31px;font-size:20px}
+
+/* ── Site header (persistent nav, signed-in) ───────────── */
+.site-header{
+  position:sticky;top:0;z-index:40;
+  padding:0;text-align:left;
+  background:rgba(255,255,255,.82);
+  -webkit-backdrop-filter:saturate(150%) blur(12px);
+  backdrop-filter:saturate(150%) blur(12px);
+  border-bottom:1px solid var(--line);
+}
+.site-header-inner{
+  max-width:1180px;margin:0 auto;height:var(--header-h);
+  padding:0 22px;display:flex;align-items:center;gap:18px;
+}
+.brand{
+  font-family:'Fraunces',serif;font-weight:400;font-size:21px;line-height:1;
+  color:var(--ink);text-decoration:none;letter-spacing:-.3px;white-space:nowrap;
+}
+.brand em{font-style:italic;color:var(--accent)}
+
+/* Desktop inline nav */
+.site-nav{margin-left:auto;display:flex;align-items:center;gap:4px}
+.site-link{
+  font-family:'Outfit';font-size:14px;font-weight:500;color:var(--muted);
+  text-decoration:none;padding:8px 13px;border-radius:999px;
+  display:inline-flex;align-items:center;gap:7px;
+  transition:color .15s,background .15s;
+}
+.site-link:hover{color:var(--ink)}
+.site-link.active{color:var(--ink);background:#f0ece3}
+.site-link.is-soon{cursor:default;opacity:.6}
+.site-link.is-soon:hover{color:var(--muted)}
+.soon-tag{
+  font-size:9px;letter-spacing:1px;text-transform:uppercase;font-weight:500;
+  background:#f0ece3;color:var(--muted);padding:2px 6px;border-radius:999px;
+}
+.site-signout{
+  margin-left:6px;font-family:'Outfit';font-size:13px;font-weight:500;
+  color:var(--ink);background:transparent;border:1px solid var(--line);
+  border-radius:999px;padding:8px 16px;cursor:pointer;
+  transition:background .15s,color .15s,border-color .15s;
+}
+.site-signout:hover{background:var(--ink);color:#fff;border-color:var(--ink)}
+
+/* Hamburger (mobile only) */
+.hamburger{
+  margin-left:auto;display:none;flex-direction:column;justify-content:center;gap:5px;
+  width:42px;height:42px;padding:0 11px;
+  background:var(--card);border:1px solid var(--line);border-radius:12px;cursor:pointer;
+}
+.hamburger span{display:block;width:100%;height:2px;border-radius:2px;background:var(--ink);transition:transform .22s ease,opacity .18s ease}
+.hamburger.is-open span:nth-child(1){transform:translateY(7px) rotate(45deg)}
+.hamburger.is-open span:nth-child(2){opacity:0}
+.hamburger.is-open span:nth-child(3){transform:translateY(-7px) rotate(-45deg)}
+
+/* Mobile slide-down menu */
+.site-menu-backdrop{position:fixed;inset:var(--header-h) 0 0;z-index:38;background:rgba(28,28,26,.35);animation:fade .2s ease}
+.site-menu{
+  display:none;position:absolute;top:var(--header-h);left:0;right:0;z-index:39;
+  flex-direction:column;gap:4px;padding:10px 14px 16px;
+  background:var(--card);border-bottom:1px solid var(--line);
+  box-shadow:0 20px 40px -26px rgba(0,0,0,.5);
+}
+.site-menu.is-open{display:flex;animation:menudrop .22s cubic-bezier(.2,.8,.3,1)}
+@keyframes menudrop{from{transform:translateY(-10px);opacity:0}to{transform:translateY(0);opacity:1}}
+.site-menu-link{
+  font-family:'Outfit';font-size:16px;font-weight:500;color:var(--ink);
+  text-decoration:none;padding:14px;border-radius:12px;
+  display:flex;align-items:center;justify-content:space-between;
+}
+.site-menu-link:hover{background:#faf8f3}
+.site-menu-link.active{background:#f0ece3}
+.site-menu-link.is-soon{color:var(--muted);opacity:.7}
+.site-menu-signout{
+  margin-top:6px;font-family:'Outfit';font-size:16px;font-weight:500;text-align:left;
+  color:var(--ink);background:#faf8f3;border:1px solid var(--line);border-radius:12px;
+  padding:14px;cursor:pointer;
+}
+.site-menu-signout:hover{background:#f0ece3}
+
+@media(max-width:720px){
+  .site-nav{display:none}
+  .hamburger{display:flex}
+  .brand{font-size:19px}
+}
 
 /* Header */
 header{padding:46px 0 22px;text-align:center;position:relative}
-.kicker{font-size:12px;letter-spacing:3px;text-transform:uppercase;color:var(--muted);margin-bottom:12px}
-h1{font-family:'Fraunces',serif;font-weight:300;font-size:clamp(34px,7vw,68px);line-height:.96;letter-spacing:-1px}
+/* Page heroes sit below the sticky nav — give them breathing room. */
+header.wrap{padding-top:38px}
+/* "Pick your game" hero — heavier weight, matching the sign-up title. */
+.pick-head h1{font-weight:400}
+/* Small text that sits directly on the photo background — darkened + a soft
+   light halo so it stays legible over the busy imagery. */
+.kicker{font-size:12px;letter-spacing:3px;text-transform:uppercase;color:var(--ink);font-weight:500;margin-bottom:12px;text-shadow:0 1px 3px rgba(244,241,236,.9)}
+h1{font-family:'Fraunces',serif;font-weight:400;font-size:clamp(34px,7vw,68px);line-height:.96;letter-spacing:-1px}
 h1 em{font-style:italic;color:var(--accent)}
-.sub{margin:16px auto 0;max-width:460px;color:var(--muted);font-size:15px}
+.sub{margin:16px auto 0;max-width:460px;color:var(--ink);font-weight:400;font-size:15px;text-shadow:0 1px 3px rgba(244,241,236,.9)}
 
 /* Pot / pool bar */
 .potbar{display:flex;flex-wrap:wrap;gap:12px;justify-content:center;align-items:center;margin:28px 0 8px}
@@ -146,7 +275,7 @@ h1 em{font-style:italic;color:var(--accent)}
 
 /* Turn bar */
 .turnbar{
-  position:sticky;top:0;z-index:5;
+  position:sticky;top:calc(var(--header-h) + 8px);z-index:5;
   background:var(--card);border:1px solid var(--line);border-radius:16px;
   padding:16px 18px;margin:0 0 8px;display:flex;align-items:center;gap:14px;
   box-shadow:0 10px 30px -22px rgba(0,0,0,.3);
@@ -190,6 +319,47 @@ h1 em{font-style:italic;color:var(--accent)}
 .spin-flag{display:inline-block;animation:flip .35s steps(1) infinite}
 @keyframes flip{0%{opacity:1}50%{opacity:.25}100%{opacity:1}}
 
+/* African bonus round */
+.african-picker{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:9px;margin-top:12px}
+.afr-btn{display:flex;align-items:center;gap:9px;font-size:14px;padding:11px 13px;background:#faf8f3;border:1px solid var(--line);border-radius:11px;cursor:pointer;text-align:left;font-family:inherit;color:var(--ink);transition:transform .12s ease,border-color .12s ease}
+.afr-btn .flag{font-size:18px;line-height:1}
+.afr-btn:hover:not(:disabled){transform:scale(1.02);border-color:var(--tier3)}
+.afr-btn:disabled{opacity:.45;cursor:not-allowed}
+.pname .afr-flag{font-size:16px;line-height:1;margin-left:2px}
+.drawteam.afr{background:#fbf3ea;border-color:var(--tier3)}
+.tag.afr-tag{background:var(--accent)}
+/* Group standings tables */
+.groups{display:grid;grid-template-columns:repeat(2,1fr);gap:16px}
+.grouptable{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);overflow:hidden}
+.gt-title{padding:13px 16px;border-bottom:1px solid var(--line);font-family:'Fraunces',serif;font-size:17px}
+.gt-scroll{overflow-x:auto}
+.gt-head,.gt-row{display:grid;grid-template-columns:minmax(140px,1fr) repeat(8,28px) 60px;align-items:center;gap:2px;min-width:460px}
+.gt-head{padding:9px 16px;font-size:11px;letter-spacing:.5px;text-transform:uppercase;color:var(--muted);border-bottom:1px solid var(--line)}
+.gt-row{padding:11px 16px;border-top:1px solid var(--line);font-size:14px}
+.gt-row:first-of-type{border-top:none}
+.gt-head span,.gt-row span{text-align:center}
+.gt-team{text-align:left!important;display:flex;align-items:center;gap:9px;min-width:0}
+.gt-pos{color:var(--muted);min-width:14px;text-align:center}
+.gt-team .flag{font-size:17px;line-height:1}
+.gt-name{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.gt-pts{font-weight:600}
+.gt-form{font-size:11px;color:var(--muted);letter-spacing:1px}
+@media(max-width:860px){.groups{grid-template-columns:1fr}}
+
+/* Standings table */
+.standings{display:flex;flex-direction:column;gap:8px}
+.stand-row{display:flex;align-items:center;gap:14px;padding:12px 14px;background:var(--card);border:1px solid var(--line);border-radius:13px}
+.stand-row.me{border-color:var(--gold);background:#fffdf6}
+.stand-rank{font-family:'Fraunces',serif;font-size:20px;color:var(--muted);min-width:22px;text-align:center}
+.stand-main{flex:1;min-width:0}
+.stand-name{font-family:'Fraunces',serif;font-size:17px;display:flex;align-items:center;gap:8px}
+.stand-teams{display:flex;flex-wrap:wrap;gap:6px;margin-top:5px}
+.stand-team{display:inline-flex;align-items:center;gap:4px;font-size:12px;color:var(--muted);background:#faf8f3;border:1px solid var(--line);border-radius:7px;padding:2px 7px}
+.stand-team .flag{font-size:14px;line-height:1}
+.stand-team.afr{background:#fbf3ea;border-color:var(--tier3);color:var(--ink);font-weight:500}
+.stand-pts{font-family:'Fraunces',serif;font-size:24px;line-height:1;text-align:right;white-space:nowrap}
+.stand-pts small{display:block;font-family:'Outfit';font-size:10px;letter-spacing:1px;text-transform:uppercase;color:var(--muted);font-weight:500}
+
 /* Reveal overlay */
 .overlay{position:fixed;inset:0;z-index:50;background:rgba(28,28,26,.92);display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:24px;animation:fade .25s ease}
 @keyframes fade{from{opacity:0}to{opacity:1}}
@@ -207,8 +377,9 @@ h1 em{font-style:italic;color:var(--accent)}
 .banner p{color:rgba(244,241,236,.72);font-size:14px;margin-bottom:0;position:relative}
 .banner .winner{font-family:'Fraunces',serif;font-style:italic;color:var(--gold)}
 
-footer{text-align:center;color:var(--muted);font-size:12px;padding:0 0 40px}
-.leave{display:block;margin:0 auto 30px;background:none;border:none;color:var(--muted);font-size:13px;text-decoration:underline;cursor:pointer;font-family:'Outfit'}
+/* footer + leave links also sit on the photo background — keep them legible. */
+footer{text-align:center;color:var(--ink);font-weight:400;font-size:12px;padding:0 0 40px;text-shadow:0 1px 3px rgba(244,241,236,.9)}
+.leave{display:block;margin:0 auto 30px;background:none;border:none;color:var(--ink);font-weight:500;font-size:13px;text-decoration:underline;cursor:pointer;font-family:'Outfit';text-shadow:0 1px 3px rgba(244,241,236,.9)}
 
 /* ── Fixtures ──────────────────────────────────────────── */
 .fx-card{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);overflow:hidden}
@@ -225,13 +396,15 @@ footer{text-align:center;color:var(--muted);font-size:12px;padding:0 0 40px}
 .fx-when{display:flex;flex-direction:column;line-height:1.2}
 .fx-date{font-size:11px;color:var(--muted)}
 .fx-time{font-family:'Fraunces',serif;font-size:16px}
-.fx-match{display:flex;align-items:center;gap:10px;min-width:0}
-.fx-side{display:flex;align-items:center;gap:7px;font-size:14px;flex:1;min-width:0}
+/* Fixed centre column for the "v" so it lines up across every row; the two
+   teams sit at the outer ends (home left, away right). */
+.fx-match{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:10px;min-width:0}
+.fx-side{display:flex;align-items:center;gap:7px;font-size:14px;min-width:0;justify-content:flex-start;text-align:left}
 .fx-side.r{justify-content:flex-end;text-align:right}
 .fx-side span:not(.fx-flag){white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .fx-flag{font-size:17px;line-height:1;flex-shrink:0}
 .fx-slot{color:var(--muted);font-style:italic;font-size:13px}
-.fx-v{color:var(--muted);font-size:12px;flex-shrink:0}
+.fx-v{color:var(--muted);font-size:12px;flex-shrink:0;text-align:center}
 .fx-meta{display:flex;flex-direction:column;align-items:flex-end;gap:3px;text-align:right}
 .fx-badge{font-size:10px;letter-spacing:.5px;text-transform:uppercase;padding:2px 8px;border-radius:6px;background:#f0ece3;color:var(--muted);white-space:nowrap}
 .fx-badge.r-group{background:var(--pitch);color:#fff}
@@ -274,3 +447,25 @@ footer{text-align:center;color:var(--muted);font-size:12px;padding:0 0 40px}
   .turnbar .btn{width:100%}
   .tiers{grid-template-columns:1fr}
 }
+
+/* ── Avatars + My Account ─────────────────────────────── */
+.avatar{
+  display:inline-flex;align-items:center;justify-content:center;
+  flex-shrink:0;border-radius:50%;overflow:hidden;
+  background:var(--pitch);color:#fff;font-family:'Outfit';font-weight:600;
+  line-height:1;text-transform:uppercase;border:1px solid var(--line);
+}
+.avatar img{width:100%;height:100%;object-fit:cover;display:block}
+
+.site-account{
+  display:inline-flex;align-items:center;gap:8px;text-decoration:none;
+  font-family:'Outfit';font-size:14px;font-weight:500;color:var(--muted);
+  padding:6px 10px;border-radius:999px;
+}
+.site-account:hover{color:var(--ink)}
+.site-account.active{color:var(--ink);background:#f0ece3}
+.site-menu-account{justify-content:flex-start;gap:10px}
+
+.account-pic{display:flex;align-items:center;gap:18px;margin-bottom:22px}
+
+.ok{color:var(--pitch);font-size:13px;margin-top:10px;min-height:18px;font-weight:500}

@@ -2,7 +2,8 @@ import { mutation, query, QueryCtx, MutationCtx } from "./_generated/server";
 import { v } from "convex/values";
 import { Id } from "./_generated/dataModel";
 import { getAuthUserId } from "@convex-dev/auth/server";
-import { POOL, MAX_PLAYERS, TIERS, REVEAL_MS } from "./pool";
+import { POOL, MAX_PLAYERS, REVEAL_MS, AFRICAN_POOL } from "./pool";
+import { avatarUrls } from "./account";
 
 // Unambiguous alphabet (no 0/O/1/I).
 const CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
@@ -24,14 +25,29 @@ function shuffle<T>(arr: T[]): T[] {
   return a;
 }
 
-// Snake order: round 0 forward, round 1 reverse, round 2 forward...
-// Each round draws from one tier (round + 1).
+// Each player ends with four teams to track: their chosen African team plus one
+// drawn from each tier. The rounds run in this fixed order:
+//   round 0 → African bonus (a free choice)
+//   round 1 → tier 1   round 2 → tier 2   round 3 → tier 3   (random draws)
+// African is picked FIRST so a player's own African team can be excluded from
+// their later draws — the two can never collide.
+const ROUNDS = 4;
+function totalPicks(n: number): number {
+  return n * ROUNDS;
+}
+
+// Snake order: even rounds forward, odd rounds reverse. Maps a pick index to
+// the player on the clock, the tier of the pot, and the phase.
 function whoseTurn(turnOrder: Id<"players">[], pickIndex: number) {
   const n = turnOrder.length;
   const round = Math.floor(pickIndex / n);
   const pos = pickIndex % n;
   const idx = round % 2 === 0 ? pos : n - 1 - pos;
-  return { playerId: turnOrder[idx], tier: round + 1, round };
+
+  // round 0 is the African choice; rounds 1-3 draw from tiers 1-3.
+  const phase: "draw" | "african" = round === 0 ? "african" : "draw";
+  const tier = round === 0 ? 0 : round;
+  return { playerId: turnOrder[idx], tier, phase, round };
 }
 
 // Identity is always derived server-side from the signed-in session — never
@@ -108,14 +124,36 @@ export const getRoom = query({
       .withIndex("by_room", (q) => q.eq("roomId", room._id))
       .collect();
 
-    let current = null as null | { playerId: Id<"players">; tier: number };
+    let current = null as null | {
+      playerId: Id<"players">;
+      tier: number;
+      phase: "draw" | "african";
+    };
     if (room.status === "drawing" && room.turnOrder.length > 0) {
       const w = whoseTurn(room.turnOrder, room.pickIndex);
-      current = { playerId: w.playerId, tier: w.tier };
+      current = { playerId: w.playerId, tier: w.tier, phase: w.phase };
     }
 
     const me = players.find((p) => p.userId === userId);
-    return { room, players, teams, current, viewerId: userId, isMember: !!me };
+
+    // Attach each seat's profile picture (resolved from its account).
+    const avatars = await avatarUrls(
+      ctx,
+      players.map((p) => p.userId),
+    );
+    const playersWithAvatars = players.map((p) => ({
+      ...p,
+      avatarUrl: avatars[p.userId] ?? null,
+    }));
+
+    return {
+      room,
+      players: playersWithAvatars,
+      teams,
+      current,
+      viewerId: userId,
+      isMember: !!me,
+    };
   },
 });
 
@@ -244,10 +282,12 @@ export const draw = mutation({
     if (!room) throw new Error("Room not found.");
     if (room.status !== "drawing") throw new Error("The draw is not running.");
 
-    const total = room.turnOrder.length * TIERS;
+    const total = totalPicks(room.turnOrder.length);
     if (room.pickIndex >= total) throw new Error("The draw is complete.");
 
-    const { playerId, tier } = whoseTurn(room.turnOrder, room.pickIndex);
+    const { playerId, tier, phase } = whoseTurn(room.turnOrder, room.pickIndex);
+    if (phase === "african")
+      throw new Error("Pick your African team for the bonus round.");
     const current = await ctx.db.get(playerId);
     if (!current) throw new Error("Player not found.");
     if (current.userId !== userId) throw new Error("It's not your turn.");
@@ -268,8 +308,55 @@ export const draw = mutation({
     if (available.length === 0)
       throw new Error("No teams left in this tier.");
 
-    const pick = available[Math.floor(Math.random() * available.length)];
+    // A player can never draw the African team they chose in round 0. Exclude
+    // it from their pool — unless it's somehow the only team left in the tier,
+    // in which case we fall back to the full pool rather than stall the draw.
+    const ownAfrican = current.africanTeam?.name;
+    const eligible = ownAfrican
+      ? available.filter((t) => t.name !== ownAfrican)
+      : available;
+    const pool = eligible.length > 0 ? eligible : available;
+
+    const pick = pool[Math.floor(Math.random() * pool.length)];
     await ctx.db.patch(pick._id, { ownerId: playerId, assignedAt: now });
+
+    const nextIndex = room.pickIndex + 1;
+    await ctx.db.patch(room._id, {
+      pickIndex: nextIndex,
+      status: nextIndex >= total ? "done" : "drawing",
+    });
+  },
+});
+
+// The bonus round: the player on the clock chooses an African nation. Unlike
+// the main draw this is a free choice, and duplicates across players are fine.
+export const pickAfrican = mutation({
+  args: { code: v.string(), teamName: v.string() },
+  handler: async (ctx, { code, teamName }) => {
+    const userId = await requireUser(ctx);
+    const room = await ctx.db
+      .query("rooms")
+      .withIndex("by_code", (q) => q.eq("code", code))
+      .unique();
+    if (!room) throw new Error("Room not found.");
+    if (room.status !== "drawing") throw new Error("The draw is not running.");
+
+    const total = totalPicks(room.turnOrder.length);
+    if (room.pickIndex >= total) throw new Error("The draw is complete.");
+
+    const { playerId, phase } = whoseTurn(room.turnOrder, room.pickIndex);
+    if (phase !== "african")
+      throw new Error("The African bonus round hasn't started yet.");
+    const current = await ctx.db.get(playerId);
+    if (!current) throw new Error("Player not found.");
+    if (current.userId !== userId) throw new Error("It's not your turn.");
+
+    const choice = AFRICAN_POOL.find((t) => t.name === teamName);
+    if (!choice) throw new Error("Pick one of the African teams.");
+
+    await ctx.db.patch(playerId, {
+      africanTeam: { name: choice.name, flag: choice.flag },
+    });
 
     const nextIndex = room.pickIndex + 1;
     await ctx.db.patch(room._id, {
@@ -298,6 +385,13 @@ export const resetRoom = mutation({
       .collect();
     for (const t of teams) {
       await ctx.db.patch(t._id, { ownerId: undefined, assignedAt: undefined });
+    }
+    const roomPlayers = await ctx.db
+      .query("players")
+      .withIndex("by_room", (q) => q.eq("roomId", room._id))
+      .collect();
+    for (const p of roomPlayers) {
+      if (p.africanTeam) await ctx.db.patch(p._id, { africanTeam: undefined });
     }
     await ctx.db.patch(room._id, {
       status: "lobby",

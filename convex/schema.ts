@@ -7,6 +7,22 @@ export default defineSchema({
   // signed-in account; we reference it as the owner of rooms and players.
   ...authTables,
 
+  // Override Auth's `users` table to add `imageId` — a reference to the
+  // profile picture in Convex file storage. All other fields mirror the
+  // built-in Auth schema verbatim (see @convex-dev/auth authTables).
+  users: defineTable({
+    name: v.optional(v.string()),
+    image: v.optional(v.string()),
+    email: v.optional(v.string()),
+    emailVerificationTime: v.optional(v.number()),
+    phone: v.optional(v.string()),
+    phoneVerificationTime: v.optional(v.number()),
+    isAnonymous: v.optional(v.boolean()),
+    imageId: v.optional(v.id("_storage")), // profile picture in file storage
+  })
+    .index("email", ["email"])
+    .index("phone", ["phone"]),
+
   rooms: defineTable({
     name: v.string(), // human label, e.g. "Friends' draw"
     code: v.string(),
@@ -25,6 +41,11 @@ export default defineSchema({
     userId: v.id("users"), // the account behind this seat
     name: v.string(),
     joinedAt: v.number(),
+    // The African team this player chose in the bonus round. Duplicates across
+    // players are allowed, so this is stored on the seat, not via team owners.
+    africanTeam: v.optional(
+      v.object({ name: v.string(), flag: v.string() }),
+    ),
   })
     .index("by_room", ["roomId"])
     .index("by_user", ["userId"]), // powers each account's "My games" list
@@ -37,4 +58,46 @@ export default defineSchema({
     ownerId: v.optional(v.id("players")),
     assignedAt: v.optional(v.number()), // wall-clock ms of the pick
   }).index("by_room", ["roomId"]),
+
+  // World Cup match results, synced from football-data.org. Shared by every
+  // room — standings are computed per room from the teams each player owns.
+  // Team names are normalised to our pool names on the way in (see results.ts).
+  matches: defineTable({
+    extId: v.number(), // football-data match id (for idempotent upserts)
+    stage: v.string(), // GROUP_STAGE, ROUND_OF_16, ...
+    status: v.string(), // FINISHED, SCHEDULED, IN_PLAY, ...
+    homeTeam: v.string(),
+    awayTeam: v.string(),
+    homeGoals: v.optional(v.number()),
+    awayGoals: v.optional(v.number()),
+    // Result once finished: which side took the points. Knockouts are decided
+    // by the final result (after ET/penalties), so they're never a draw.
+    winner: v.optional(
+      v.union(v.literal("HOME"), v.literal("AWAY"), v.literal("DRAW")),
+    ),
+    utcDate: v.string(),
+  }).index("by_ext", ["extId"]),
+
+  // Group standings synced from football-data.org — one row per group (A–L),
+  // each holding its ordered table. Team names/flags normalised to our pool.
+  groupStandings: defineTable({
+    group: v.string(), // "Group A"
+    order: v.number(), // 0..11, for stable display ordering
+    table: v.array(
+      v.object({
+        position: v.number(),
+        teamName: v.string(),
+        flag: v.string(),
+        played: v.number(),
+        won: v.number(),
+        draw: v.number(),
+        lost: v.number(),
+        goalsFor: v.number(),
+        goalsAgainst: v.number(),
+        goalDifference: v.number(),
+        points: v.number(),
+        form: v.optional(v.string()),
+      }),
+    ),
+  }).index("by_group", ["group"]),
 });

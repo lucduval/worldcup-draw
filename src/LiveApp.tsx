@@ -1,195 +1,17 @@
-import { useEffect, useMemo, useState } from "react";
-import {
-  Authenticated,
-  AuthLoading,
-  ConvexReactClient,
-  Unauthenticated,
-  useMutation,
-  useQuery,
-} from "convex/react";
-import { ConvexAuthProvider, useAuthActions } from "@convex-dev/auth/react";
+import { useEffect, useState } from "react";
+import { useMutation, useQuery } from "convex/react";
 import type { FunctionReturnType } from "convex/server";
 import { api } from "../convex/_generated/api";
-import { REVEAL_MS, ENTRY_FEE, MAX_PLAYERS, TIERS } from "../convex/pool";
-import { Header, RevealOverlay, TIER_VAR, TIER_NAME } from "./shared";
+import { REVEAL_MS, ENTRY_FEE, MAX_PLAYERS, AFRICAN_POOL } from "../convex/pool";
+import { Avatar, Header, RevealOverlay, TIER_VAR, TIER_NAME } from "./shared";
+
+// Each player tracks four teams: one African pick plus one per tier.
+const TEAMS_EACH = 4;
 import Fixtures from "./FixturesView";
 
-// ── Live mode: mount Convex + Auth only here ─────────────
+// ── Live mode (auth + Convex provider live in App.tsx) ───
+// Routes between the games list and an individual room.
 export default function LiveApp({ onExit }: { onExit: () => void }) {
-  const url = import.meta.env.VITE_CONVEX_URL as string | undefined;
-  const client = useMemo(
-    () => (url ? new ConvexReactClient(url) : null),
-    [url],
-  );
-
-  if (!client) return <BackendNotConnected onExit={onExit} />;
-
-  return (
-    <ConvexAuthProvider client={client}>
-      <AuthLoading>
-        <div className="center-stage" />
-      </AuthLoading>
-      <Unauthenticated>
-        <AuthScreen onExit={onExit} />
-      </Unauthenticated>
-      <Authenticated>
-        <SignedIn onExit={onExit} />
-      </Authenticated>
-    </ConvexAuthProvider>
-  );
-}
-
-function BackendNotConnected({ onExit }: { onExit: () => void }) {
-  return (
-    <>
-      <header className="wrap">
-        <div className="kicker">Live match play</div>
-        <h1>
-          Almost <em>there</em>
-        </h1>
-      </header>
-      <div className="center-stage">
-        <div className="panel">
-          <h3>Backend not connected</h3>
-          <p className="hint">
-            Live mode needs Convex. In a terminal run <b>npx convex dev</b> once
-            (it writes <b>.env.local</b>), then restart <b>npm run dev</b>. Or
-            just use the local one-device game — no setup needed.
-          </p>
-          <button className="btn ghost" onClick={onExit}>
-            ← Back to menu
-          </button>
-        </div>
-      </div>
-    </>
-  );
-}
-
-// ── Sign in / sign up ────────────────────────────────────
-function AuthScreen({ onExit }: { onExit: () => void }) {
-  const { signIn } = useAuthActions();
-  const [flow, setFlow] = useState<"signIn" | "signUp">("signIn");
-  const [name, setName] = useState("");
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [err, setErr] = useState("");
-  const [busy, setBusy] = useState(false);
-
-  const isSignUp = flow === "signUp";
-
-  async function submit(e: React.FormEvent) {
-    e.preventDefault();
-    if (isSignUp && !name.trim()) return setErr("Pop your name in first.");
-    if (!email.trim()) return setErr("Enter your email.");
-    if (password.length < 8)
-      return setErr("Password needs at least 8 characters.");
-    setBusy(true);
-    setErr("");
-    try {
-      await signIn(
-        "password",
-        isSignUp
-          ? { name: name.trim(), email: email.trim(), password, flow }
-          : { email: email.trim(), password, flow },
-      );
-      // On success the <Authenticated> branch takes over automatically.
-    } catch {
-      setErr(
-        isSignUp
-          ? "Couldn’t sign up — that email may already be registered."
-          : "Wrong email or password.",
-      );
-      setBusy(false);
-    }
-  }
-
-  return (
-    <>
-      <header className="wrap">
-        <div className="kicker">Live match play · 2026</div>
-        <h1>
-          The World Cup <em>Draw</em>
-        </h1>
-        <p className="sub">
-          Sign in to see your draws — friends, family, the lot — and jump into
-          any of them. R{ENTRY_FEE} in, three teams each, winner takes the pot.
-        </p>
-      </header>
-
-      <div className="center-stage">
-        <div className="panel">
-          <h3>{isSignUp ? "Create your account" : "Welcome back"}</h3>
-          <p className="hint">
-            {isSignUp
-              ? "One account, all your games — on any device."
-              : "Sign in to pick up your draws."}
-          </p>
-
-          <form onSubmit={submit}>
-            {isSignUp && (
-              <div className="field">
-                <label>Your name</label>
-                <input
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  placeholder="e.g. Luc"
-                  maxLength={18}
-                />
-              </div>
-            )}
-
-            <div className="field">
-              <label>Email</label>
-              <input
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="you@example.com"
-                autoComplete="email"
-              />
-            </div>
-
-            <div className="field">
-              <label>Password</label>
-              <input
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="8+ characters"
-                autoComplete={isSignUp ? "new-password" : "current-password"}
-              />
-            </div>
-
-            <button className="btn big" disabled={busy} type="submit">
-              {isSignUp ? "Sign up →" : "Sign in →"}
-            </button>
-            <div className="err">{err}</div>
-          </form>
-
-          <div className="authtoggle">
-            {isSignUp ? "Already have an account?" : "New here?"}{" "}
-            <button
-              type="button"
-              onClick={() => {
-                setErr("");
-                setFlow(isSignUp ? "signIn" : "signUp");
-              }}
-            >
-              {isSignUp ? "Sign in" : "Create one"}
-            </button>
-          </div>
-        </div>
-      </div>
-
-      <button className="leave" onClick={onExit}>
-        ← Back to menu
-      </button>
-    </>
-  );
-}
-
-// ── Signed in: route between the games list and a room ───
-function SignedIn({ onExit }: { onExit: () => void }) {
   const [code, setCode] = useState<string | null>(
     () => localStorage.getItem("wc_room"),
   );
@@ -252,7 +74,6 @@ function GamesList({
   notice?: string;
 }) {
   const games = useQuery(api.rooms.myGames);
-  const { signOut } = useAuthActions();
   const createRoom = useMutation(api.rooms.createRoom);
   const joinRoom = useMutation(api.rooms.joinRoom);
   const [gameName, setGameName] = useState("");
@@ -375,9 +196,6 @@ function GamesList({
         </div>
       </div>
 
-      <button className="leave" onClick={() => void signOut()}>
-        Sign out
-      </button>
       <button className="leave" onClick={onExit}>
         ← Back to menu
       </button>
@@ -402,6 +220,7 @@ function Room({
   const { room, players, teams, current, viewerId } = data;
   const startGame = useMutation(api.rooms.startGame);
   const draw = useMutation(api.rooms.draw);
+  const pickAfrican = useMutation(api.rooms.pickAfrican);
   const resetRoom = useMutation(api.rooms.resetRoom);
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState(false);
@@ -410,7 +229,10 @@ function Room({
   const pool = ENTRY_FEE * players.length;
   const me = players.find((p) => p.userId === viewerId);
   const myTeams = me
-    ? teams.filter((t) => t.ownerId === me._id).map((t) => t.name)
+    ? [
+        ...teams.filter((t) => t.ownerId === me._id).map((t) => t.name),
+        ...(me.africanTeam ? [me.africanTeam.name] : []),
+      ]
     : [];
 
   const revealing = teams.find(
@@ -444,6 +266,18 @@ function Room({
     }
   }
 
+  async function handlePickAfrican(teamName: string) {
+    setBusy(true);
+    setErr("");
+    try {
+      await pickAfrican({ code: room.code, teamName });
+    } catch (e: any) {
+      setErr(e.message ?? "Could not pick.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function handleReset() {
     if (!confirm("Reset the draw back to the lobby for everyone?")) return;
     try {
@@ -457,7 +291,7 @@ function Room({
   if (room.status === "lobby") {
     return (
       <>
-        <Header pool={pool} count={players.length} />
+        <Header pool={pool} count={players.length} teamsEach={TEAMS_EACH} />
         <div className="center-stage">
           <div className="panel" style={{ textAlign: "center" }}>
             <div className="game-title">{room.name}</div>
@@ -480,6 +314,7 @@ function Room({
               {players.map((p, i) => (
                 <div className="roster-row" key={p._id}>
                   <span className="num">{i + 1}</span>
+                  <Avatar src={p.avatarUrl} name={p.name} size={28} />
                   <span>{p.name}</span>
                   {p.userId === viewerId ? (
                     <span className="you">You</span>
@@ -524,6 +359,7 @@ function Room({
     ? players.find((p) => p._id === current.playerId)
     : undefined;
   const myTurn = !!currentPlayer && currentPlayer.userId === viewerId;
+  const isAfrican = current?.phase === "african";
   const done = room.status === "done";
 
   return (
@@ -535,7 +371,7 @@ function Room({
         />
       )}
 
-      <Header pool={pool} count={players.length} />
+      <Header pool={pool} count={players.length} teamsEach={TEAMS_EACH} />
 
       <div className="wrap">
         <div className="game-title">{room.name}</div>
@@ -548,42 +384,79 @@ function Room({
               <>
                 <div>
                   <div className="turn-label">It’s your turn</div>
-                  <div className="turn-name">Draw your team</div>
+                  <div className="turn-name">
+                    {isAfrican ? "Choose your African team" : "Draw your team"}
+                  </div>
                 </div>
                 <span
                   className="turn-tier"
-                  style={{ background: TIER_VAR[current!.tier] }}
+                  style={{
+                    background: isAfrican
+                      ? "var(--tier3)"
+                      : TIER_VAR[current!.tier],
+                  }}
                 >
-                  {TIER_NAME[current!.tier]}
+                  {isAfrican ? "African bonus" : TIER_NAME[current!.tier]}
                 </span>
                 <div className="spacer" />
-                <button
-                  className="btn"
-                  disabled={busy || !!revealing}
-                  onClick={handleDraw}
-                >
-                  {revealing ? "Revealing…" : "🎲 Tap to draw"}
-                </button>
+                {isAfrican ? (
+                  <span className="turn-label">pick below ↓</span>
+                ) : (
+                  <button
+                    className="btn"
+                    disabled={busy || !!revealing}
+                    onClick={handleDraw}
+                  >
+                    {revealing ? "Revealing…" : "🎲 Tap to draw"}
+                  </button>
+                )}
               </>
             ) : (
               <>
                 <div>
-                  <div className="turn-label">Now drawing</div>
+                  <div className="turn-label">
+                    {isAfrican ? "Bonus round" : "Now drawing"}
+                  </div>
                   <div className="turn-name">{currentPlayer?.name ?? "—"}</div>
                 </div>
                 <span
                   className="turn-tier"
-                  style={{ background: TIER_VAR[current?.tier ?? 1] }}
+                  style={{
+                    background: isAfrican
+                      ? "var(--tier3)"
+                      : TIER_VAR[current?.tier ?? 1],
+                  }}
                 >
-                  {TIER_NAME[current?.tier ?? 1]}
+                  {isAfrican ? "African bonus" : TIER_NAME[current?.tier ?? 1]}
                 </span>
                 <div className="spacer" />
                 <span className="turn-label">
-                  {revealing ? "🥁 revealing…" : "waiting…"}
+                  {isAfrican
+                    ? "choosing…"
+                    : revealing
+                      ? "🥁 revealing…"
+                      : "waiting…"}
                 </span>
               </>
             )}
           </div>
+
+          {myTurn && isAfrican && (
+            <div className="african-picker">
+              {AFRICAN_POOL.map((t) => (
+                <button
+                  key={t.name}
+                  className="afr-btn"
+                  disabled={busy}
+                  onClick={() => handlePickAfrican(t.name)}
+                >
+                  <span className="flag">{t.flag}</span>
+                  {t.name}
+                </button>
+              ))}
+            </div>
+          )}
+
           {err && (
             <div className="err" style={{ textAlign: "center" }}>
               {err}
@@ -598,7 +471,7 @@ function Room({
             <h3>The draw is locked ✓</h3>
             <p>
               {players.length} squads set · pool of <b>R{pool}</b> · may the
-              best group of three win. Good luck! 🍀
+              best squad win. Good luck! 🍀
             </p>
           </div>
         </section>
@@ -608,7 +481,7 @@ function Room({
       <section className="section wrap">
         <div className="shead">
           <h2>The Squads</h2>
-          <span>three teams each · one per tier</span>
+          <span>one per tier · plus an African pick (double points)</span>
           <div className="rule" />
         </div>
         <div className="players">
@@ -620,10 +493,14 @@ function Room({
               isTurn={!!currentPlayer && currentPlayer._id === p._id && !done}
               teams={teams}
               now={now}
+              teamsEach={TEAMS_EACH}
             />
           ))}
         </div>
       </section>
+
+      {/* Standings — live once the draw is locked and results roll in */}
+      {done && <Standings code={room.code} viewerId={viewerId} />}
 
       {/* Tier pools */}
       <section className="section wrap">
@@ -698,36 +575,123 @@ function Room({
   );
 }
 
+// ── Standings ────────────────────────────────────────────
+// 3 pts win · 1 draw · 0 loss, African team doubled. Empty until matches play.
+function Standings({
+  code,
+  viewerId,
+}: {
+  code: string;
+  viewerId: RoomData["viewerId"];
+}) {
+  const rows = useQuery(api.results.standings, { code });
+  if (rows === undefined || rows === null) return null;
+
+  const anyResults = rows.some(
+    (r) => r.teams.some((t) => t.played > 0) || (r.african?.played ?? 0) > 0,
+  );
+
+  return (
+    <section className="section wrap">
+      <div className="shead">
+        <h2>Standings</h2>
+        <span>3 win · 1 draw · 0 loss · African team scores double</span>
+        <div className="rule" />
+      </div>
+
+      {!anyResults && (
+        <p className="hint" style={{ marginBottom: 14 }}>
+          No results yet — points appear here as World Cup matches are played.
+        </p>
+      )}
+
+      <div className="standings">
+        {rows.map((r, i) => {
+          const isMe = r.userId === viewerId;
+          return (
+            <div className={`stand-row${isMe ? " me" : ""}`} key={r.playerId}>
+              <span className="stand-rank">{i + 1}</span>
+              <Avatar src={r.avatarUrl} name={r.name} size={30} />
+              <div className="stand-main">
+                <div className="stand-name">
+                  {r.name}
+                  {isMe && <span className="badge-you">You</span>}
+                </div>
+                <div className="stand-teams">
+                  {r.african && (
+                    <span className="stand-team afr" title="African pick ×2">
+                      <span className="flag">{r.african.flag}</span>
+                      {r.african.points}×
+                    </span>
+                  )}
+                  {r.teams.map((t) => (
+                    <span className="stand-team" key={t.name}>
+                      <span className="flag">{t.flag}</span>
+                      {t.points}
+                    </span>
+                  ))}
+                </div>
+              </div>
+              <span className="stand-pts">
+                {r.total}
+                <small>pts</small>
+              </span>
+            </div>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
 function PlayerCard({
   player,
   isMe,
   isTurn,
   teams,
   now,
+  teamsEach,
 }: {
   player: RoomData["players"][number];
   isMe: boolean;
   isTurn: boolean;
   teams: RoomData["teams"];
   now: number;
+  teamsEach: number;
 }) {
-  const mine = teams
-    .filter((t) => t.ownerId === player._id)
-    .sort((a, b) => a.tier - b.tier);
-  const shown = mine.filter(
+  // Exactly one team per tier now, so a fixed three-slot layout reads cleanly.
+  const mine = teams.filter((t) => t.ownerId === player._id);
+  const afr = player.africanTeam;
+  const revealedCount = mine.filter(
     (t) => !t.assignedAt || now >= t.assignedAt + REVEAL_MS,
   ).length;
+  const shown = revealedCount + (afr ? 1 : 0);
 
   return (
     <div className={`player${isTurn ? " is-turn" : ""}`}>
       <div className="pname">
+        <Avatar src={player.avatarUrl} name={player.name} size={26} />
         {player.name}
+        {afr && (
+          <span className="afr-flag" title={`African pick: ${afr.name}`}>
+            {afr.flag}
+          </span>
+        )}
         {isMe && <span className="badge-you">You</span>}
       </div>
       <div className="pstake">
-        R{ENTRY_FEE} in · {shown}/{TIERS} teams
+        R{ENTRY_FEE} in · {shown}/{teamsEach} teams
       </div>
       <div className="draw">
+        {afr ? (
+          <div className="drawteam afr">
+            <span className="flag">{afr.flag}</span>
+            {afr.name}
+            <span className="tag afr-tag">Africa ×2</span>
+          </div>
+        ) : (
+          <div className="drawteam empty">African pick · to choose</div>
+        )}
         {[1, 2, 3].map((tier) => {
           const team = mine.find((t) => t.tier === tier);
           if (!team) {

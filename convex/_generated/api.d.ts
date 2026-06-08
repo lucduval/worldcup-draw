@@ -8,9 +8,12 @@
  * @module
  */
 
+import type * as account from "../account.js";
 import type * as auth from "../auth.js";
+import type * as crons from "../crons.js";
 import type * as http from "../http.js";
 import type * as pool from "../pool.js";
+import type * as results from "../results.js";
 import type * as rooms from "../rooms.js";
 
 import type {
@@ -20,9 +23,12 @@ import type {
 } from "convex/server";
 
 declare const fullApi: ApiFromModules<{
+  account: typeof account;
   auth: typeof auth;
+  crons: typeof crons;
   http: typeof http;
   pool: typeof pool;
+  results: typeof results;
   rooms: typeof rooms;
 }>;
 
