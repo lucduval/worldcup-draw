@@ -1,8 +1,16 @@
 import { mutation, query, QueryCtx, MutationCtx } from "./_generated/server";
 import { v } from "convex/values";
-import { Id } from "./_generated/dataModel";
+import { Id, Doc } from "./_generated/dataModel";
 import { getAuthUserId } from "@convex-dev/auth/server";
-import { POOL, MAX_PLAYERS, REVEAL_MS, AFRICAN_POOL, ENTRY_FEE } from "./pool";
+import {
+  POOL,
+  MAX_PLAYERS,
+  REVEAL_MS,
+  AFRICAN_POOL,
+  ENTRY_FEE,
+  RANK_BY_NAME,
+  tierForRank,
+} from "./pool";
 import { avatarUrls } from "./account";
 
 // Unambiguous alphabet (no 0/O/1/I).
@@ -34,6 +42,53 @@ function shuffle<T>(arr: T[]): T[] {
 const ROUNDS = 4;
 function totalPicks(n: number): number {
   return n * ROUNDS;
+}
+
+// Pick a random eligible team from `tier` to hand to a player. The player's own
+// African pick is excluded where possible (the two can never collide), falling
+// back to the full pool only if that would otherwise leave nothing. Returns
+// null when the tier is exhausted. Pure over the in-memory `teams` array, so
+// callers assigning many picks in one pass can mark winners as taken locally.
+function pickTierTeam(
+  teams: Doc<"teams">[],
+  tier: number,
+  ownAfrican: string | undefined,
+): Doc<"teams"> | null {
+  const available = teams.filter((t) => t.tier === tier && !t.ownerId);
+  if (available.length === 0) return null;
+  const eligible = ownAfrican
+    ? available.filter((t) => t.name !== ownAfrican)
+    : available;
+  const pool = eligible.length > 0 ? eligible : available;
+  return pool[Math.floor(Math.random() * pool.length)];
+}
+
+// Re-seed a room's team pool to the player count: keep the top `TIERS × n`
+// ranked teams, split them into equal tiers of n, and cut the rest (CUT_TIER),
+// so no key team sits out simply because there are fewer than 16 players. Each
+// player still draws exactly one team per tier. Persists the new tiers AND
+// mutates the passed `teams` array in place, so a caller mid-allocation keeps
+// using it. Run once when a draw starts (or is auto-allocated from the lobby);
+// idempotent, since it always re-derives from the fixed global ranking.
+async function retierForDraw(
+  ctx: MutationCtx,
+  teams: Doc<"teams">[],
+  playerCount: number,
+): Promise<void> {
+  for (const t of teams) {
+    const rank = RANK_BY_NAME[t.name];
+    const next = rank === undefined ? t.tier : tierForRank(rank, playerCount);
+    if (next !== t.tier) {
+      await ctx.db.patch(t._id, { tier: next });
+      t.tier = next;
+    }
+  }
+}
+
+// A random African nation, used when a turn is auto-resolved rather than chosen.
+function randomAfrican(): { name: string; flag: string } {
+  const c = AFRICAN_POOL[Math.floor(Math.random() * AFRICAN_POOL.length)];
+  return { name: c.name, flag: c.flag };
 }
 
 // Snake order: even rounds forward, odd rounds reverse. Maps a pick index to
@@ -270,6 +325,14 @@ export const startGame = mutation({
 
     const turnOrder = shuffle(players.map((p) => p._id));
 
+    // Trim & re-seed the field to this player count before the draw opens, so
+    // every tier holds exactly as many teams as there are players.
+    const teams = await ctx.db
+      .query("teams")
+      .withIndex("by_room", (q) => q.eq("roomId", room._id))
+      .collect();
+    await retierForDraw(ctx, teams, players.length);
+
     await ctx.db.patch(room._id, {
       status: "drawing",
       turnOrder,
@@ -311,20 +374,8 @@ export const draw = mutation({
     );
     if (stillRevealing) throw new Error("Hold on — a team is being revealed.");
 
-    const available = teams.filter((t) => t.tier === tier && !t.ownerId);
-    if (available.length === 0)
-      throw new Error("No teams left in this tier.");
-
-    // A player can never draw the African team they chose in round 0. Exclude
-    // it from their pool — unless it's somehow the only team left in the tier,
-    // in which case we fall back to the full pool rather than stall the draw.
-    const ownAfrican = current.africanTeam?.name;
-    const eligible = ownAfrican
-      ? available.filter((t) => t.name !== ownAfrican)
-      : available;
-    const pool = eligible.length > 0 ? eligible : available;
-
-    const pick = pool[Math.floor(Math.random() * pool.length)];
+    const pick = pickTierTeam(teams, tier, current.africanTeam?.name);
+    if (!pick) throw new Error("No teams left in this tier.");
     await ctx.db.patch(pick._id, { ownerId: playerId, assignedAt: now });
 
     const nextIndex = room.pickIndex + 1;
@@ -369,6 +420,131 @@ export const pickAfrican = mutation({
     await ctx.db.patch(room._id, {
       pickIndex: nextIndex,
       status: nextIndex >= total ? "done" : "drawing",
+    });
+  },
+});
+
+// The host can resolve the current player's turn for them, so a slow or absent
+// player never stalls the draw. Tier rounds draw a random team (exactly as that
+// player's own tap would); the African bonus is assigned a random nation rather
+// than chosen. Only ever acts on the seat currently on the clock.
+export const hostDraw = mutation({
+  args: { code: v.string() },
+  handler: async (ctx, { code }) => {
+    const userId = await requireUser(ctx);
+    const room = await ctx.db
+      .query("rooms")
+      .withIndex("by_code", (q) => q.eq("code", code))
+      .unique();
+    if (!room) throw new Error("Room not found.");
+    if (room.hostId !== userId)
+      throw new Error("Only the host can draw for a player.");
+    if (room.status !== "drawing") throw new Error("The draw is not running.");
+
+    const total = totalPicks(room.turnOrder.length);
+    if (room.pickIndex >= total) throw new Error("The draw is complete.");
+
+    const { playerId, tier, phase } = whoseTurn(room.turnOrder, room.pickIndex);
+    const current = await ctx.db.get(playerId);
+    if (!current) throw new Error("Player not found.");
+
+    const teams = await ctx.db
+      .query("teams")
+      .withIndex("by_room", (q) => q.eq("roomId", room._id))
+      .collect();
+
+    // Block while the previous reveal is still animating, same as a self-draw.
+    const now = Date.now();
+    const stillRevealing = teams.some(
+      (t) => t.assignedAt && now < t.assignedAt + REVEAL_MS,
+    );
+    if (stillRevealing) throw new Error("Hold on — a team is being revealed.");
+
+    if (phase === "african") {
+      await ctx.db.patch(playerId, { africanTeam: randomAfrican() });
+    } else {
+      const pick = pickTierTeam(teams, tier, current.africanTeam?.name);
+      if (!pick) throw new Error("No teams left in this tier.");
+      await ctx.db.patch(pick._id, { ownerId: playerId, assignedAt: now });
+    }
+
+    const nextIndex = room.pickIndex + 1;
+    await ctx.db.patch(room._id, {
+      pickIndex: nextIndex,
+      status: nextIndex >= total ? "done" : "drawing",
+    });
+  },
+});
+
+// Skip the live draw entirely: the host assigns every remaining pick at once —
+// random tier teams and a random African nation for anyone who hasn't chosen —
+// and the draw jumps straight to done. Works from the lobby (allocate the whole
+// field) or mid-draw (finish whatever's left). No reveal animation: results
+// simply appear, since the point is to settle everyone immediately.
+export const autoAllocate = mutation({
+  args: { code: v.string() },
+  handler: async (ctx, { code }) => {
+    const userId = await requireUser(ctx);
+    const room = await ctx.db
+      .query("rooms")
+      .withIndex("by_code", (q) => q.eq("code", code))
+      .unique();
+    if (!room) throw new Error("Room not found.");
+    if (room.hostId !== userId)
+      throw new Error("Only the host can auto-allocate.");
+    if (room.status === "done") throw new Error("The draw is already complete.");
+
+    const players = await ctx.db
+      .query("players")
+      .withIndex("by_room", (q) => q.eq("roomId", room._id))
+      .collect();
+    if (players.length < 2)
+      throw new Error("Need at least 2 players to allocate.");
+    players.sort((a, b) => a.joinedAt - b.joinedAt);
+
+    // From the lobby we first need a turn order, exactly like startGame; from a
+    // running draw we keep the order and resume from the current pick.
+    const fromLobby = room.status === "lobby";
+    const turnOrder = fromLobby ? shuffle(players.map((p) => p._id)) : room.turnOrder;
+    const startIndex = fromLobby ? 0 : room.pickIndex;
+    const total = totalPicks(turnOrder.length);
+
+    const teams = await ctx.db
+      .query("teams")
+      .withIndex("by_room", (q) => q.eq("roomId", room._id))
+      .collect();
+
+    // From the lobby, trim & re-seed the field to the player count first (the
+    // live draw does this in startGame). Mid-draw the tiers are already set.
+    if (fromLobby) await retierForDraw(ctx, teams, players.length);
+
+    // Track each seat's African pick so tier draws can exclude it — seeded from
+    // anyone who already chose, then filled in as we assign the bonus round.
+    const africanName = new Map<Id<"players">, string | undefined>(
+      players.map((p) => [p._id, p.africanTeam?.name]),
+    );
+
+    for (let i = startIndex; i < total; i++) {
+      const { playerId, tier, phase } = whoseTurn(turnOrder, i);
+      if (phase === "african") {
+        if (!africanName.get(playerId)) {
+          const choice = randomAfrican();
+          await ctx.db.patch(playerId, { africanTeam: choice });
+          africanName.set(playerId, choice.name);
+        }
+      } else {
+        const pick = pickTierTeam(teams, tier, africanName.get(playerId));
+        if (pick) {
+          await ctx.db.patch(pick._id, { ownerId: playerId });
+          pick.ownerId = playerId; // mark taken for the rest of this pass
+        }
+      }
+    }
+
+    await ctx.db.patch(room._id, {
+      status: "done",
+      turnOrder,
+      pickIndex: total,
     });
   },
 });

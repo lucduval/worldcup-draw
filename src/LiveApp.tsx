@@ -3,7 +3,15 @@ import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { useMutation, useQuery } from "convex/react";
 import type { FunctionReturnType } from "convex/server";
 import { api } from "../convex/_generated/api";
-import { REVEAL_MS, ENTRY_FEE, MAX_PLAYERS, AFRICAN_POOL } from "../convex/pool";
+import {
+  REVEAL_MS,
+  ENTRY_FEE,
+  MAX_PLAYERS,
+  AFRICAN_POOL,
+  POOL,
+  RANK_BY_NAME,
+  TIERS,
+} from "../convex/pool";
 import {
   Avatar,
   CopyInvite,
@@ -296,6 +304,8 @@ function Room({
   const { room, players, teams, current, viewerId } = data;
   const startGame = useMutation(api.rooms.startGame);
   const draw = useMutation(api.rooms.draw);
+  const hostDraw = useMutation(api.rooms.hostDraw);
+  const autoAllocate = useMutation(api.rooms.autoAllocate);
   const pickAfrican = useMutation(api.rooms.pickAfrican);
   const resetRoom = useMutation(api.rooms.resetRoom);
   const deleteRoom = useMutation(api.rooms.deleteRoom);
@@ -339,6 +349,36 @@ function Room({
       await draw({ code: room.code });
     } catch (e: any) {
       setErr(e.message ?? "Could not draw.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleHostDraw() {
+    setBusy(true);
+    setErr("");
+    try {
+      await hostDraw({ code: room.code });
+    } catch (e: any) {
+      setErr(e.message ?? "Could not draw for the player.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleAutoAllocate() {
+    if (
+      !confirm(
+        "Auto-allocate every remaining team now? This finishes the draw instantly for everyone.",
+      )
+    )
+      return;
+    setBusy(true);
+    setErr("");
+    try {
+      await autoAllocate({ code: room.code });
+    } catch (e: any) {
+      setErr(e.message ?? "Could not auto-allocate.");
     } finally {
       setBusy(false);
     }
@@ -407,6 +447,11 @@ function Room({
               {players.length}/{MAX_PLAYERS} players · R{entryFee} each · pool
               R{pool}
             </p>
+            <p className="hint">
+              Top {players.length * TIERS} teams play ·{" "}
+              {POOL.length - players.length * TIERS} sit out — the field trims to
+              fit, so the strongest teams are always in.
+            </p>
             <div className="roster">
               {players.map((p, i) => (
                 <div className="roster-row" key={p._id}>
@@ -435,6 +480,16 @@ function Room({
             ) : (
               <button className="btn big" disabled>
                 Waiting for the host to start…
+              </button>
+            )}
+            {isHost && players.length >= 2 && (
+              <button
+                className="leave"
+                onClick={handleAutoAllocate}
+                disabled={busy}
+                style={{ textDecoration: "underline", marginTop: 8 }}
+              >
+                Host: skip the draw & auto-allocate everyone
               </button>
             )}
             {isHost && (
@@ -541,16 +596,41 @@ function Room({
                   {isAfrican ? "African bonus" : TIER_NAME[current?.tier ?? 1]}
                 </span>
                 <div className="spacer" />
-                <span className="turn-label">
-                  {isAfrican
-                    ? "choosing…"
-                    : revealing
-                      ? "🥁 revealing…"
-                      : "waiting…"}
-                </span>
+                {isHost ? (
+                  <button
+                    className="btn"
+                    disabled={busy || !!revealing}
+                    onClick={handleHostDraw}
+                  >
+                    {revealing
+                      ? "Revealing…"
+                      : isAfrican
+                        ? `🎲 Pick for ${currentPlayer?.name ?? "player"}`
+                        : `🎲 Draw for ${currentPlayer?.name ?? "player"}`}
+                  </button>
+                ) : (
+                  <span className="turn-label">
+                    {isAfrican
+                      ? "choosing…"
+                      : revealing
+                        ? "🥁 revealing…"
+                        : "waiting…"}
+                  </span>
+                )}
               </>
             )}
           </div>
+
+          {isHost && (
+            <button
+              className="leave"
+              onClick={handleAutoAllocate}
+              disabled={busy}
+              style={{ textDecoration: "underline", marginTop: 8 }}
+            >
+              Host: auto-allocate the rest →
+            </button>
+          )}
 
           {myTurn && isAfrican && (
             <div className="african-picker">
@@ -663,6 +743,37 @@ function Room({
           })}
         </div>
       </section>
+
+      {/* Teams cut to fit the player count — shown so it's clear what's out */}
+      {(() => {
+        const cut = teams
+          .filter((t) => t.tier === 0)
+          .sort(
+            (a, b) =>
+              (RANK_BY_NAME[a.name] ?? 99) - (RANK_BY_NAME[b.name] ?? 99),
+          );
+        if (cut.length === 0) return null;
+        return (
+          <section className="section wrap">
+            <div className="shead">
+              <h2>Left out</h2>
+              <span>
+                {cut.length} team{cut.length === 1 ? "" : "s"} cut to fit{" "}
+                {players.length} players — top {players.length * TIERS} play
+              </span>
+              <div className="rule" />
+            </div>
+            <div className="teamlist cutlist">
+              {cut.map((t) => (
+                <div className="team cut" key={t._id}>
+                  <span className="flag">{t.flag}</span>
+                  {t.name}
+                </div>
+              ))}
+            </div>
+          </section>
+        );
+      })()}
 
       <Fixtures myTeams={myTeams} />
 
