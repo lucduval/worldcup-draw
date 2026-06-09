@@ -17,23 +17,92 @@ export function shuffle<T>(arr: T[]): T[] {
 
 // A round profile picture, falling back to the player's initial when they
 // haven't set one. Used across rosters, squad cards, standings and the header.
+// When `enlargeable` is set, tapping it opens a lightbox with the full-size
+// picture — handy for sizing up the other players in a game.
 export function Avatar({
   src,
   name,
   size = 28,
+  enlargeable = false,
 }: {
   src?: string | null;
   name: string;
   size?: number;
+  enlargeable?: boolean;
 }) {
+  const [open, setOpen] = useState(false);
   const initial = (name.trim()[0] ?? "?").toUpperCase();
+  const inner = src ? <img src={src} alt="" /> : <span>{initial}</span>;
+
+  // Lock body scroll and wire Escape-to-close while the lightbox is open.
+  useEffect(() => {
+    if (!open) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setOpen(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => {
+      document.body.style.overflow = prev;
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+
+  if (!enlargeable) {
+    return (
+      <span
+        className="avatar"
+        style={{ width: size, height: size, fontSize: Math.round(size * 0.42) }}
+      >
+        {inner}
+      </span>
+    );
+  }
+
   return (
-    <span
-      className="avatar"
-      style={{ width: size, height: size, fontSize: Math.round(size * 0.42) }}
-    >
-      {src ? <img src={src} alt="" /> : <span>{initial}</span>}
-    </span>
+    <>
+      <button
+        type="button"
+        className="avatar avatar-btn"
+        style={{ width: size, height: size, fontSize: Math.round(size * 0.42) }}
+        onClick={() => setOpen(true)}
+        aria-label={`View ${name}'s profile picture`}
+      >
+        {inner}
+      </button>
+      {open && (
+        <div
+          className="avatar-lightbox"
+          role="dialog"
+          aria-modal="true"
+          aria-label={`${name}'s profile picture`}
+          onClick={() => setOpen(false)}
+        >
+          <button
+            type="button"
+            className="avatar-lightbox-close"
+            aria-label="Close"
+            onClick={() => setOpen(false)}
+          >
+            ✕
+          </button>
+          <div
+            className="avatar-lightbox-card"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <span className="avatar avatar-xl">
+              {src ? (
+                <img src={src} alt={`${name}'s profile picture`} />
+              ) : (
+                <span>{initial}</span>
+              )}
+            </span>
+            <div className="avatar-lightbox-name">{name}</div>
+          </div>
+        </div>
+      )}
+    </>
   );
 }
 

@@ -471,7 +471,7 @@ function Room({
               {players.map((p, i) => (
                 <div className="roster-row" key={p._id}>
                   <span className="num">{i + 1}</span>
-                  <Avatar src={p.avatarUrl} name={p.name} size={28} />
+                  <Avatar src={p.avatarUrl} name={p.name} size={28} enlargeable />
                   <span>{p.name}</span>
                   {p.userId === viewerId ? (
                     <span className="you">You</span>
@@ -851,7 +851,7 @@ function Standings({
           return (
             <div className={`stand-row${isMe ? " me" : ""}`} key={r.playerId}>
               <span className="stand-rank">{i + 1}</span>
-              <Avatar src={r.avatarUrl} name={r.name} size={30} />
+              <Avatar src={r.avatarUrl} name={r.name} size={30} enlargeable />
               <div className="stand-main">
                 <div className="stand-name">
                   {r.name}
@@ -951,7 +951,7 @@ function PlayerCard({
   return (
     <div className={`player${isTurn ? " is-turn" : ""}`}>
       <div className="pname">
-        <Avatar src={player.avatarUrl} name={player.name} size={26} />
+        <Avatar src={player.avatarUrl} name={player.name} size={26} enlargeable />
         {player.name}
         {afr && (
           <span className="afr-flag" title={`African pick: ${afr.name}`}>
