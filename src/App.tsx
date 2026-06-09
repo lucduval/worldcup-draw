@@ -17,7 +17,6 @@ import {
 } from "convex/react";
 import { ConvexAuthProvider } from "@convex-dev/auth/react";
 import { api } from "../convex/_generated/api";
-import { ENTRY_FEE } from "../convex/pool";
 import AuthScreen from "./AuthScreen";
 import SiteHeader from "./SiteHeader";
 import MyAccount from "./MyAccount";
@@ -279,7 +278,7 @@ function Welcome({ onEnter }: { onEnter: () => void }) {
           The luck of the <em>draw</em>
         </h1>
         <p className="sub">
-          Forty-eight nations, three pots, one blind draw. R{ENTRY_FEE} in,
+          Forty-eight nations, three pots, one blind draw. Set your buy-in,
           three teams each — best trio takes the pot.
         </p>
       </header>

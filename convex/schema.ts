@@ -32,6 +32,9 @@ export default defineSchema({
       v.literal("done"),
     ),
     hostId: v.id("users"), // the account that created the game
+    // Per-draw buy-in (Rand) chosen by the host. Optional so rooms created
+    // before this field fall back to the ENTRY_FEE default.
+    entryFee: v.optional(v.number()),
     turnOrder: v.array(v.id("players")), // set when the game starts
     pickIndex: v.number(), // how many picks have been made
   }).index("by_code", ["code"]),

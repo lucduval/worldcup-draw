@@ -84,10 +84,12 @@ export function CopyInvite({
 
 export function Header({
   pool,
+  entryFee,
   count,
   teamsEach,
 }: {
   pool: number;
+  entryFee?: number;
   count: number;
   teamsEach: number;
 }) {
@@ -102,7 +104,7 @@ export function Header({
           {count} player{count === 1 ? "" : "s"}
         </div>
         <div className="chip">
-          <span className="dot" />R{ENTRY_FEE} buy-in
+          <span className="dot" />R{entryFee ?? ENTRY_FEE} buy-in
         </div>
         <div className="chip">
           <span className="dot" />

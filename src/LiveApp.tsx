@@ -17,6 +17,29 @@ import {
 const TEAMS_EACH = 4;
 import Fixtures from "./FixturesView";
 
+// Dustbin glyph for destructive actions (host: delete game).
+function TrashIcon() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      width="16"
+      height="16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M3 6h18" />
+      <path d="M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2" />
+      <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
+      <path d="M10 11v6" />
+      <path d="M14 11v6" />
+    </svg>
+  );
+}
+
 // ── Live mode (auth + Convex provider live in App.tsx) ───
 // Routes between the games list and an individual room.
 export default function LiveApp({ onExit }: { onExit: () => void }) {
@@ -89,22 +112,37 @@ function GamesList({
   const games = useQuery(api.rooms.myGames);
   const createRoom = useMutation(api.rooms.createRoom);
   const joinRoom = useMutation(api.rooms.joinRoom);
+  const deleteRoom = useMutation(api.rooms.deleteRoom);
   const [gameName, setGameName] = useState("");
+  const [buyIn, setBuyIn] = useState(String(ENTRY_FEE));
   const [joinCode, setJoinCode] = useState("");
   const [err, setErr] = useState(notice || "");
   const [busy, setBusy] = useState(false);
 
   async function handleCreate() {
     if (!gameName.trim()) return setErr("Give your draw a name.");
+    const fee = Math.round(Number(buyIn));
+    if (!Number.isFinite(fee) || fee < 0)
+      return setErr("Enter a valid buy-in amount.");
     setBusy(true);
     setErr("");
     try {
-      const { code } = await createRoom({ name: gameName.trim() });
+      const { code } = await createRoom({ name: gameName.trim(), entryFee: fee });
       onEnter(code);
     } catch (e: any) {
       setErr(e.message ?? "Could not create the game.");
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function handleDelete(code: string, name: string) {
+    if (!confirm(`Delete “${name}” for everyone? This can’t be undone.`)) return;
+    setErr("");
+    try {
+      await deleteRoom({ code });
+    } catch (e: any) {
+      setErr(e.message ?? "Could not delete the game.");
     }
   }
 
@@ -172,6 +210,16 @@ function GamesList({
                     className="gc-copy"
                     label="Invite"
                   />
+                  {g.isHost && (
+                    <button
+                      className="gc-delete"
+                      onClick={() => handleDelete(g.code, g.name)}
+                      aria-label={`Delete ${g.name}`}
+                      title="Delete game"
+                    >
+                      <TrashIcon />
+                    </button>
+                  )}
                 </div>
               ))}
             </div>
@@ -186,6 +234,18 @@ function GamesList({
               onChange={(e) => setGameName(e.target.value)}
               placeholder="e.g. Family draw"
               maxLength={30}
+            />
+          </div>
+          <div className="field">
+            <label>Buy-in per player (R)</label>
+            <input
+              type="number"
+              inputMode="numeric"
+              min={0}
+              step={10}
+              value={buyIn}
+              onChange={(e) => setBuyIn(e.target.value)}
+              placeholder={String(ENTRY_FEE)}
             />
           </div>
           <button className="btn big" disabled={busy} onClick={handleCreate}>
@@ -238,11 +298,13 @@ function Room({
   const draw = useMutation(api.rooms.draw);
   const pickAfrican = useMutation(api.rooms.pickAfrican);
   const resetRoom = useMutation(api.rooms.resetRoom);
+  const deleteRoom = useMutation(api.rooms.deleteRoom);
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState(false);
 
   const isHost = room.hostId === viewerId;
-  const pool = ENTRY_FEE * players.length;
+  const entryFee = room.entryFee ?? ENTRY_FEE;
+  const pool = entryFee * players.length;
   const me = players.find((p) => p.userId === viewerId);
   const myTeams = me
     ? [
@@ -303,11 +365,27 @@ function Room({
     }
   }
 
+  async function handleDelete() {
+    if (!confirm(`Delete “${room.name}” for everyone? This can’t be undone.`))
+      return;
+    try {
+      await deleteRoom({ code: room.code });
+      onBack();
+    } catch (e: any) {
+      setErr(e.message ?? "Could not delete the game.");
+    }
+  }
+
   // ── Lobby ──────────────────────────────────────────────
   if (room.status === "lobby") {
     return (
       <>
-        <Header pool={pool} count={players.length} teamsEach={TEAMS_EACH} />
+        <Header
+          pool={pool}
+          entryFee={entryFee}
+          count={players.length}
+          teamsEach={TEAMS_EACH}
+        />
         <div className="center-stage">
           <div className="panel" style={{ textAlign: "center" }}>
             <div className="game-title">{room.name}</div>
@@ -326,7 +404,7 @@ function Room({
           <div className="panel">
             <h3>In the draw</h3>
             <p className="hint">
-              {players.length}/{MAX_PLAYERS} players · R{ENTRY_FEE} each · pool
+              {players.length}/{MAX_PLAYERS} players · R{entryFee} each · pool
               R{pool}
             </p>
             <div className="roster">
@@ -357,6 +435,15 @@ function Room({
             ) : (
               <button className="btn big" disabled>
                 Waiting for the host to start…
+              </button>
+            )}
+            {isHost && (
+              <button
+                className="leave danger"
+                onClick={handleDelete}
+                style={{ textDecoration: "underline", marginTop: 8 }}
+              >
+                Host: delete game
               </button>
             )}
             <div className="err">{err}</div>
@@ -390,7 +477,12 @@ function Room({
         />
       )}
 
-      <Header pool={pool} count={players.length} teamsEach={TEAMS_EACH} />
+      <Header
+        pool={pool}
+        entryFee={entryFee}
+        count={players.length}
+        teamsEach={TEAMS_EACH}
+      />
 
       <div className="wrap">
         <div className="game-title">{room.name}</div>
@@ -513,6 +605,7 @@ function Room({
               teams={teams}
               now={now}
               teamsEach={TEAMS_EACH}
+              entryFee={entryFee}
             />
           ))}
         </div>
@@ -581,6 +674,13 @@ function Room({
             style={{ textDecoration: "underline" }}
           >
             Host: reset draw
+          </button>
+          <button
+            className="leave danger"
+            onClick={handleDelete}
+            style={{ textDecoration: "underline" }}
+          >
+            Host: delete game
           </button>
         </div>
       )}
@@ -670,6 +770,7 @@ function PlayerCard({
   teams,
   now,
   teamsEach,
+  entryFee,
 }: {
   player: RoomData["players"][number];
   isMe: boolean;
@@ -677,6 +778,7 @@ function PlayerCard({
   teams: RoomData["teams"];
   now: number;
   teamsEach: number;
+  entryFee: number;
 }) {
   // Exactly one team per tier now, so a fixed three-slot layout reads cleanly.
   const mine = teams.filter((t) => t.ownerId === player._id);
@@ -699,7 +801,7 @@ function PlayerCard({
         {isMe && <span className="badge-you">You</span>}
       </div>
       <div className="pstake">
-        R{ENTRY_FEE} in · {shown}/{teamsEach} teams
+        R{entryFee} in · {shown}/{teamsEach} teams
       </div>
       <div className="draw">
         {afr ? (

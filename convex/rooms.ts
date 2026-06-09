@@ -2,7 +2,7 @@ import { mutation, query, QueryCtx, MutationCtx } from "./_generated/server";
 import { v } from "convex/values";
 import { Id } from "./_generated/dataModel";
 import { getAuthUserId } from "@convex-dev/auth/server";
-import { POOL, MAX_PLAYERS, REVEAL_MS, AFRICAN_POOL } from "./pool";
+import { POOL, MAX_PLAYERS, REVEAL_MS, AFRICAN_POOL, ENTRY_FEE } from "./pool";
 import { avatarUrls } from "./account";
 
 // Unambiguous alphabet (no 0/O/1/I).
@@ -158,9 +158,15 @@ export const getRoom = query({
 });
 
 export const createRoom = mutation({
-  args: { name: v.string() },
-  handler: async (ctx, { name }) => {
+  args: { name: v.string(), entryFee: v.optional(v.number()) },
+  handler: async (ctx, { name, entryFee }) => {
     const userId = await requireUser(ctx);
+
+    // Clamp the buy-in to a sane whole-Rand amount; fall back to the default.
+    const fee =
+      entryFee == null || !Number.isFinite(entryFee)
+        ? ENTRY_FEE
+        : Math.min(100000, Math.max(0, Math.round(entryFee)));
 
     let code = "";
     for (let i = 0; i < 12; i++) {
@@ -181,6 +187,7 @@ export const createRoom = mutation({
       code,
       status: "lobby",
       hostId: userId,
+      entryFee: fee,
       turnOrder: [],
       pickIndex: 0,
     });
@@ -363,6 +370,37 @@ export const pickAfrican = mutation({
       pickIndex: nextIndex,
       status: nextIndex >= total ? "done" : "drawing",
     });
+  },
+});
+
+// Permanently delete a game — only the host can do this. Removes the room and
+// everything scoped to it (player seats and the team pool). Shared data
+// (matches, group standings) is untouched.
+export const deleteRoom = mutation({
+  args: { code: v.string() },
+  handler: async (ctx, { code }) => {
+    const userId = await requireUser(ctx);
+    const room = await ctx.db
+      .query("rooms")
+      .withIndex("by_code", (q) => q.eq("code", code))
+      .unique();
+    if (!room) throw new Error("Room not found.");
+    if (room.hostId !== userId)
+      throw new Error("Only the host can delete the game.");
+
+    const teams = await ctx.db
+      .query("teams")
+      .withIndex("by_room", (q) => q.eq("roomId", room._id))
+      .collect();
+    for (const t of teams) await ctx.db.delete(t._id);
+
+    const roomPlayers = await ctx.db
+      .query("players")
+      .withIndex("by_room", (q) => q.eq("roomId", room._id))
+      .collect();
+    for (const p of roomPlayers) await ctx.db.delete(p._id);
+
+    await ctx.db.delete(room._id);
   },
 });
 

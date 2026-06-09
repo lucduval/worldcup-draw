@@ -284,6 +284,14 @@ h1 em{font-style:italic;color:var(--accent)}
   font-size:12px;font-weight:500;cursor:pointer;transition:border .2s,color .2s;
 }
 .gc-copy:hover{border-color:var(--gold);color:var(--ink)}
+.gc-delete{
+  flex-shrink:0;display:inline-flex;align-items:center;justify-content:center;
+  width:34px;height:34px;background:transparent;border:1px solid var(--line);
+  color:var(--muted);border-radius:999px;cursor:pointer;
+  transition:border .2s,color .2s,background .2s;
+}
+.gc-delete:hover{border-color:#b3261e;color:#b3261e;background:#fbeceb}
+.leave.danger{color:#b3261e}
 .invite-row{display:flex;justify-content:center;margin-top:14px}
 .gamecard .gc-main{display:flex;flex-direction:column;gap:3px;min-width:0;flex:1}
 .gamecard .gc-name{font-family:'Fraunces',serif;font-size:18px;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
