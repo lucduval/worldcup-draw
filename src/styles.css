@@ -361,6 +361,11 @@ h1 em{font-style:italic;color:var(--accent)}
 .afr-btn .flag{font-size:18px;line-height:1}
 .afr-btn:hover:not(:disabled){transform:scale(1.02);border-color:var(--tier3)}
 .afr-btn:disabled{opacity:.45;cursor:not-allowed}
+.afr-btn.selected{background:#fbf3ea;border-color:var(--tier3);font-weight:600}
+.afr-btn.selected:disabled{opacity:1;cursor:default}
+.afr-btn .afr-check{margin-left:auto;color:var(--tier3);font-weight:700}
+.afr-pick-block{margin-top:14px}
+.afr-pick-head{font-size:13px;color:var(--muted)}
 .pname .afr-flag{font-size:16px;line-height:1;margin-left:2px}
 .drawteam.afr{background:#fbf3ea;border-color:var(--tier3)}
 .tag.afr-tag{background:var(--accent)}
@@ -404,6 +409,9 @@ h1 em{font-style:italic;color:var(--accent)}
 .overlay .who em{color:var(--gold);font-style:italic}
 .overlay .reel{font-size:clamp(64px,18vw,120px);line-height:1;margin:14px 0;height:1.1em;animation:reel .12s steps(1) infinite}
 @keyframes reel{0%{transform:translateY(-3px)}50%{transform:translateY(3px)}100%{transform:translateY(-3px)}}
+/* Once the reel lands on the drawn team it freezes and pops, then holds. */
+.overlay .reel.landed{animation:pop .45s cubic-bezier(.2,1.3,.4,1)}
+.overlay .reel-team{font-family:'Fraunces',serif;font-size:clamp(24px,6vw,40px);color:#fff;font-weight:500;margin:-4px 0 14px;animation:fade .3s ease}
 .overlay .tier-pill{font-size:12px;text-transform:uppercase;letter-spacing:2px;color:#fff;padding:5px 14px;border-radius:999px;display:inline-block}
 
 /* CTA-style footer banner */
@@ -438,6 +446,9 @@ footer{text-align:center;color:var(--ink);font-weight:400;font-size:12px;padding
 .fx-side{display:flex;align-items:center;gap:7px;font-size:14px;min-width:0;justify-content:flex-start;text-align:left}
 .fx-side.r{justify-content:flex-end;text-align:right}
 .fx-side span:not(.fx-flag){white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.fx-team{display:flex;flex-direction:column;min-width:0;gap:1px}
+.fx-side.r .fx-team{align-items:flex-end}
+.fx-owner{font-size:11px;font-weight:600;color:var(--accent);max-width:100%}
 .fx-flag{font-size:17px;line-height:1;flex-shrink:0}
 .fx-slot{color:var(--muted);font-style:italic;font-size:13px}
 .fx-v{color:var(--muted);font-size:12px;flex-shrink:0;text-align:center}

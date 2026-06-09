@@ -119,25 +119,50 @@ export function Header({
   );
 }
 
+// How long the reel spins before it lands on the drawn flag. The rest of
+// REVEAL_MS is spent holding on the result so everyone sees who got what.
+const SPIN_MS = 1300;
+
 export function RevealOverlay({
   ownerName,
   tier,
+  flag,
+  teamName,
 }: {
   ownerName: string;
   tier: number;
+  flag: string;
+  teamName: string;
 }) {
   const [face, setFace] = useState(0);
+  const [landed, setLanded] = useState(false);
+
+  // Remount per draw (the overlay only renders while a reveal is live), so the
+  // spin restarts and re-lands for each team. Key on the team as a safety net.
   useEffect(() => {
-    const t = setInterval(() => setFace((f) => (f + 1) % REEL.length), 90);
-    return () => clearInterval(t);
-  }, []);
+    setLanded(false);
+    setFace(0);
+    const spin = setInterval(() => setFace((f) => (f + 1) % REEL.length), 90);
+    const stop = setTimeout(() => {
+      clearInterval(spin);
+      setLanded(true);
+    }, SPIN_MS);
+    return () => {
+      clearInterval(spin);
+      clearTimeout(stop);
+    };
+  }, [flag, teamName]);
+
   return (
     <div className="overlay">
       <div className="drum">🥁 the draw 🥁</div>
       <div className="who">
-        <em>{ownerName}</em> is drawing…
+        <em>{ownerName}</em> {landed ? "drew" : "is drawing…"}
       </div>
-      <div className="reel">{REEL[face]}</div>
+      <div className={`reel${landed ? " landed" : ""}`}>
+        {landed ? flag : REEL[face]}
+      </div>
+      {landed && <div className="reel-team">{teamName}</div>}
       <span className="tier-pill" style={{ background: TIER_VAR[tier] }}>
         {TIER_NAME[tier]}
       </span>

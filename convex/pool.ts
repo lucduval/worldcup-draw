@@ -1,7 +1,9 @@
 // Single source of truth shared by the Convex backend AND the React client.
 // 48 nations, three tiers of 16. Edit freely — flags are emoji.
 
-export const REVEAL_MS = 2600;
+// How long a tier draw stays on screen: the reel spins, lands on the drawn
+// flag, then holds on it so everyone sees who got what before the next turn.
+export const REVEAL_MS = 3200;
 export const MAX_PLAYERS = 16; // one team per tier per player, 16 teams per tier
 export const ENTRY_FEE = 100; // R100 buy-in
 
@@ -95,9 +97,10 @@ export function tierForRank(rank: number, playerCount: number): number {
   return Math.floor(rank / playerCount) + 1;
 }
 
-// The African nations inside the 48-team pool. The opening "bonus" round lets
-// every player choose one of these — duplicates across players are allowed,
-// so this list is always fully available regardless of the main draw.
+// The African nations inside the 48-team pool. Every player freely chooses one
+// of these as a bonus team (off the draw clock — anyone can pick on entry, and
+// duplicates across players are allowed), so this list is always fully
+// available regardless of the main draw.
 export const AFRICAN_NAMES = [
   "Morocco",
   "Senegal",

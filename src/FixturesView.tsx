@@ -12,7 +12,14 @@ import {
 
 const NEXT_COUNT = 5;
 
-export default function Fixtures({ myTeams }: { myTeams?: string[] }) {
+export default function Fixtures({
+  myTeams,
+  owners,
+}: {
+  myTeams?: string[];
+  owners?: Record<string, string>;
+}) {
+  const owns = owners ?? {};
   const [open, setOpen] = useState(false);
   const [mineOnly, setMineOnly] = useState(false);
   const [now, setNow] = useState(() => Date.now());
@@ -71,7 +78,12 @@ export default function Fixtures({ myTeams }: { myTeams?: string[] }) {
         ) : (
           <div className="fx-list">
             {strip.map((f, i) => (
-              <FixtureRow key={i} f={f} highlight={involves(f, teamSet)} />
+              <FixtureRow
+                key={i}
+                f={f}
+                owners={owns}
+                highlight={involves(f, teamSet)}
+              />
             ))}
           </div>
         )}
@@ -120,7 +132,7 @@ export default function Fixtures({ myTeams }: { myTeams?: string[] }) {
                   None of your teams have a fixed fixture yet.
                 </div>
               ) : (
-                <DayGroups list={panelList} teamSet={teamSet} />
+                <DayGroups list={panelList} teamSet={teamSet} owners={owns} />
               )}
             </div>
           </aside>
@@ -133,9 +145,11 @@ export default function Fixtures({ myTeams }: { myTeams?: string[] }) {
 function DayGroups({
   list,
   teamSet,
+  owners,
 }: {
   list: Fixture[];
   teamSet: Set<string>;
+  owners: Record<string, string>;
 }) {
   // list is already sorted by utc; group consecutive matches by SAST date.
   const groups: { date: string; items: Fixture[] }[] = [];
@@ -156,6 +170,7 @@ function DayGroups({
                 key={i}
                 f={f}
                 showDate={false}
+                owners={owners}
                 highlight={involves(f, teamSet)}
               />
             ))}
@@ -170,10 +185,12 @@ function FixtureRow({
   f,
   showDate = true,
   highlight = false,
+  owners = {},
 }: {
   f: Fixture;
   showDate?: boolean;
   highlight?: boolean;
+  owners?: Record<string, string>;
 }) {
   const badge =
     f.round === "group" ? `Group ${f.group}` : ROUND_LABEL[f.round];
@@ -184,9 +201,14 @@ function FixtureRow({
         <span className="fx-time">{sastTime(f.utc)}</span>
       </div>
       <div className="fx-match">
-        <Side name={f.home} known={f.teamsKnown} />
+        <Side name={f.home} known={f.teamsKnown} owner={owners[f.home]} />
         <span className="fx-v">v</span>
-        <Side name={f.away} known={f.teamsKnown} align="right" />
+        <Side
+          name={f.away}
+          known={f.teamsKnown}
+          owner={owners[f.away]}
+          align="right"
+        />
       </div>
       <div className="fx-meta">
         <span className={`fx-badge r-${f.round}`}>{badge}</span>
@@ -199,24 +221,32 @@ function FixtureRow({
 function Side({
   name,
   known,
+  owner,
   align,
 }: {
   name: string;
   known: boolean;
+  owner?: string;
   align?: "right";
 }) {
   const flag = known ? flagFor(name) : null;
+  const team = (
+    <span className="fx-team">
+      <span className={known ? "" : "fx-slot"}>{name}</span>
+      {owner && <span className="fx-owner">{owner}</span>}
+    </span>
+  );
   return (
     <span className={`fx-side${align === "right" ? " r" : ""}`}>
       {align === "right" ? (
         <>
-          <span className={known ? "" : "fx-slot"}>{name}</span>
+          {team}
           {flag && <span className="fx-flag">{flag}</span>}
         </>
       ) : (
         <>
           {flag && <span className="fx-flag">{flag}</span>}
-          <span className={known ? "" : "fx-slot"}>{name}</span>
+          {team}
         </>
       )}
     </span>

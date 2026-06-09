@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { useMutation, useQuery } from "convex/react";
 import type { FunctionReturnType } from "convex/server";
@@ -323,6 +323,21 @@ function Room({
       ]
     : [];
 
+  // Map every assigned team (incl. African picks) → its owner's name, so the
+  // fixtures list can show who's playing who at a glance.
+  const teamOwners = useMemo(() => {
+    const m: Record<string, string> = {};
+    for (const t of teams) {
+      if (!t.ownerId) continue;
+      const owner = players.find((p) => p._id === t.ownerId);
+      if (owner) m[t.name] = owner.name;
+    }
+    for (const p of players) {
+      if (p.africanTeam) m[p.africanTeam.name] = p.name;
+    }
+    return m;
+  }, [teams, players]);
+
   const revealing = teams.find(
     (t) => t.assignedAt && now < t.assignedAt + REVEAL_MS,
   );
@@ -503,6 +518,22 @@ function Room({
             )}
             <div className="err">{err}</div>
           </div>
+
+          {me && (
+            <div className="panel">
+              <h3>Your African team</h3>
+              <p className="hint">
+                Pick your bonus African nation — it scores double. You can change
+                it any time before the host locks the draw.
+              </p>
+              <AfricanPicker
+                me={me}
+                teams={teams}
+                busy={busy}
+                onPick={handlePickAfrican}
+              />
+            </div>
+          )}
         </div>
         <Fixtures />
         <button className="leave" onClick={onBack}>
@@ -520,7 +551,6 @@ function Room({
     ? players.find((p) => p._id === current.playerId)
     : undefined;
   const myTurn = !!currentPlayer && currentPlayer.userId === viewerId;
-  const isAfrican = current?.phase === "african";
   const done = room.status === "done";
 
   return (
@@ -529,6 +559,8 @@ function Room({
         <RevealOverlay
           ownerName={revealingOwner?.name ?? "Someone"}
           tier={revealing.tier}
+          flag={revealing.flag}
+          teamName={revealing.name}
         />
       )}
 
@@ -550,50 +582,34 @@ function Room({
               <>
                 <div>
                   <div className="turn-label">It’s your turn</div>
-                  <div className="turn-name">
-                    {isAfrican ? "Choose your African team" : "Draw your team"}
-                  </div>
+                  <div className="turn-name">Draw your team</div>
                 </div>
                 <span
                   className="turn-tier"
-                  style={{
-                    background: isAfrican
-                      ? "var(--tier3)"
-                      : TIER_VAR[current!.tier],
-                  }}
+                  style={{ background: TIER_VAR[current!.tier] }}
                 >
-                  {isAfrican ? "African bonus" : TIER_NAME[current!.tier]}
+                  {TIER_NAME[current!.tier]}
                 </span>
                 <div className="spacer" />
-                {isAfrican ? (
-                  <span className="turn-label">pick below ↓</span>
-                ) : (
-                  <button
-                    className="btn"
-                    disabled={busy || !!revealing}
-                    onClick={handleDraw}
-                  >
-                    {revealing ? "Revealing…" : "🎲 Tap to draw"}
-                  </button>
-                )}
+                <button
+                  className="btn"
+                  disabled={busy || !!revealing}
+                  onClick={handleDraw}
+                >
+                  {revealing ? "Revealing…" : "🎲 Tap to draw"}
+                </button>
               </>
             ) : (
               <>
                 <div>
-                  <div className="turn-label">
-                    {isAfrican ? "Bonus round" : "Now drawing"}
-                  </div>
+                  <div className="turn-label">Now drawing</div>
                   <div className="turn-name">{currentPlayer?.name ?? "—"}</div>
                 </div>
                 <span
                   className="turn-tier"
-                  style={{
-                    background: isAfrican
-                      ? "var(--tier3)"
-                      : TIER_VAR[current?.tier ?? 1],
-                  }}
+                  style={{ background: TIER_VAR[current?.tier ?? 1] }}
                 >
-                  {isAfrican ? "African bonus" : TIER_NAME[current?.tier ?? 1]}
+                  {TIER_NAME[current?.tier ?? 1]}
                 </span>
                 <div className="spacer" />
                 {isHost ? (
@@ -604,17 +620,11 @@ function Room({
                   >
                     {revealing
                       ? "Revealing…"
-                      : isAfrican
-                        ? `🎲 Pick for ${currentPlayer?.name ?? "player"}`
-                        : `🎲 Draw for ${currentPlayer?.name ?? "player"}`}
+                      : `🎲 Draw for ${currentPlayer?.name ?? "player"}`}
                   </button>
                 ) : (
                   <span className="turn-label">
-                    {isAfrican
-                      ? "choosing…"
-                      : revealing
-                        ? "🥁 revealing…"
-                        : "waiting…"}
+                    {revealing ? "🥁 revealing…" : "waiting…"}
                   </span>
                 )}
               </>
@@ -632,19 +642,19 @@ function Room({
             </button>
           )}
 
-          {myTurn && isAfrican && (
-            <div className="african-picker">
-              {AFRICAN_POOL.map((t) => (
-                <button
-                  key={t.name}
-                  className="afr-btn"
-                  disabled={busy}
-                  onClick={() => handlePickAfrican(t.name)}
-                >
-                  <span className="flag">{t.flag}</span>
-                  {t.name}
-                </button>
-              ))}
+          {me && (
+            <div className="afr-pick-block">
+              <div className="afr-pick-head">
+                {me.africanTeam
+                  ? "Your African bonus team (scores double) — tap to change:"
+                  : "Pick your African bonus team (scores double) — any time before the draw locks:"}
+              </div>
+              <AfricanPicker
+                me={me}
+                teams={teams}
+                busy={busy}
+                onPick={handlePickAfrican}
+              />
             </div>
           )}
 
@@ -775,7 +785,7 @@ function Room({
         );
       })()}
 
-      <Fixtures myTeams={myTeams} />
+      <Fixtures myTeams={myTeams} owners={teamOwners} />
 
       {isHost && (
         <div className="wrap" style={{ textAlign: "center" }}>
@@ -871,6 +881,45 @@ function Standings({
         })}
       </div>
     </section>
+  );
+}
+
+// The African bonus picker — a free, off-the-clock choice every player makes for
+// themselves. Highlights the current pick and blocks any nation the player has
+// already drawn from a tier, so the bonus team never duplicates a drawn one.
+function AfricanPicker({
+  me,
+  teams,
+  busy,
+  onPick,
+}: {
+  me: RoomData["players"][number];
+  teams: RoomData["teams"];
+  busy: boolean;
+  onPick: (name: string) => void;
+}) {
+  return (
+    <div className="african-picker">
+      {AFRICAN_POOL.map((t) => {
+        const selected = me.africanTeam?.name === t.name;
+        const drawn = teams.some(
+          (tt) => tt.ownerId === me._id && tt.name === t.name,
+        );
+        return (
+          <button
+            key={t.name}
+            className={`afr-btn${selected ? " selected" : ""}`}
+            disabled={busy || (drawn && !selected)}
+            title={drawn && !selected ? "You already drew this team" : undefined}
+            onClick={() => onPick(t.name)}
+          >
+            <span className="flag">{t.flag}</span>
+            {t.name}
+            {selected && <span className="afr-check">✓</span>}
+          </button>
+        );
+      })}
+    </div>
   );
 }
 
