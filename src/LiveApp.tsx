@@ -1,9 +1,17 @@
 import { useEffect, useState } from "react";
+import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { useMutation, useQuery } from "convex/react";
 import type { FunctionReturnType } from "convex/server";
 import { api } from "../convex/_generated/api";
 import { REVEAL_MS, ENTRY_FEE, MAX_PLAYERS, AFRICAN_POOL } from "../convex/pool";
-import { Avatar, Header, RevealOverlay, TIER_VAR, TIER_NAME } from "./shared";
+import {
+  Avatar,
+  CopyInvite,
+  Header,
+  RevealOverlay,
+  TIER_VAR,
+  TIER_NAME,
+} from "./shared";
 
 // Each player tracks four teams: one African pick plus one per tier.
 const TEAMS_EACH = 4;
@@ -12,9 +20,15 @@ import Fixtures from "./FixturesView";
 // ── Live mode (auth + Convex provider live in App.tsx) ───
 // Routes between the games list and an individual room.
 export default function LiveApp({ onExit }: { onExit: () => void }) {
-  const [code, setCode] = useState<string | null>(
-    () => localStorage.getItem("wc_room"),
-  );
+  // The open room lives in the URL (/games/:code), so "My games" (/games)
+  // always lands on the list rather than dropping back into a room.
+  const navigate = useNavigate();
+  const location = useLocation();
+  const { code: rawCode } = useParams();
+  const code = rawCode ? rawCode.toUpperCase() : null;
+
+  // A failed invite (full/started/unknown game) redirects here with a message.
+  const notice = (location.state as { notice?: string } | null)?.notice;
 
   const data = useQuery(
     api.rooms.getRoom,
@@ -27,21 +41,20 @@ export default function LiveApp({ onExit }: { onExit: () => void }) {
     return () => clearInterval(t);
   }, []);
 
-  // Stale room code (deleted/unknown): drop it and fall back to the list.
+  // Stale room code (deleted/unknown): fall back to the list.
   useEffect(() => {
-    if (code && data === null) localStorage.removeItem("wc_room");
-  }, [code, data]);
+    if (code && data === null) navigate("/games", { replace: true });
+  }, [code, data, navigate]);
 
   function enterRoom(c: string) {
-    localStorage.setItem("wc_room", c);
-    setCode(c);
+    navigate(`/games/${c.toUpperCase()}`);
   }
   function backToList() {
-    localStorage.removeItem("wc_room");
-    setCode(null);
+    navigate("/games");
   }
 
-  if (!code) return <GamesList onEnter={enterRoom} onExit={onExit} />;
+  if (!code)
+    return <GamesList onEnter={enterRoom} onExit={onExit} notice={notice} />;
   if (data === undefined) return <div className="center-stage" />;
   if (data === null) {
     return (
@@ -140,23 +153,26 @@ function GamesList({
           ) : (
             <div className="games">
               {games.map((g) => (
-                <button
-                  className="gamecard"
-                  key={g.code}
-                  onClick={() => onEnter(g.code)}
-                >
-                  <div className="gc-main">
-                    <span className="gc-name">{g.name}</span>
-                    <span className="gc-meta">
-                      <span className="gc-code">{g.code}</span>·{" "}
-                      {g.playerCount} player{g.playerCount === 1 ? "" : "s"}
-                      {g.isHost ? " · host" : ""}
+                <div className="gamecard" key={g.code}>
+                  <button className="gc-open" onClick={() => onEnter(g.code)}>
+                    <div className="gc-main">
+                      <span className="gc-name">{g.name}</span>
+                      <span className="gc-meta">
+                        <span className="gc-code">{g.code}</span>·{" "}
+                        {g.playerCount} player{g.playerCount === 1 ? "" : "s"}
+                        {g.isHost ? " · host" : ""}
+                      </span>
+                    </div>
+                    <span className={`status-pill ${g.status}`}>
+                      {STATUS_LABEL[g.status]}
                     </span>
-                  </div>
-                  <span className={`status-pill ${g.status}`}>
-                    {STATUS_LABEL[g.status]}
-                  </span>
-                </button>
+                  </button>
+                  <CopyInvite
+                    code={g.code}
+                    className="gc-copy"
+                    label="Invite"
+                  />
+                </div>
               ))}
             </div>
           )}
@@ -301,6 +317,9 @@ function Room({
             <div className="code-badge">
               <small>Code</small>
               {room.code}
+            </div>
+            <div className="invite-row">
+              <CopyInvite code={room.code} />
             </div>
           </div>
 

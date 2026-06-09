@@ -37,6 +37,51 @@ export function Avatar({
   );
 }
 
+// Copies a shareable invite link (/join/CODE) to the clipboard. Friends who
+// open it are auto-joined into the game — the link survives the login gate.
+export function CopyInvite({
+  code,
+  className = "btn ghost",
+  label = "Copy invite link",
+}: {
+  code: string;
+  className?: string;
+  label?: string;
+}) {
+  const [copied, setCopied] = useState(false);
+
+  async function copy(e: React.MouseEvent) {
+    // Game cards are themselves clickable — don't open the room when copying.
+    e.stopPropagation();
+    const url = `${window.location.origin}/join/${code}`;
+    try {
+      await navigator.clipboard.writeText(url);
+    } catch {
+      // Fallback for browsers/contexts without the async clipboard API.
+      const ta = document.createElement("textarea");
+      ta.value = url;
+      ta.style.position = "fixed";
+      ta.style.opacity = "0";
+      document.body.appendChild(ta);
+      ta.select();
+      try {
+        document.execCommand("copy");
+      } catch {
+        /* give up silently — the button just won't confirm */
+      }
+      document.body.removeChild(ta);
+    }
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1800);
+  }
+
+  return (
+    <button type="button" className={className} onClick={copy}>
+      {copied ? "Link copied ✓" : label}
+    </button>
+  );
+}
+
 export function Header({
   pool,
   count,

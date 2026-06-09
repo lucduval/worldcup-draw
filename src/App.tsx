@@ -1,10 +1,18 @@
-import { Suspense, lazy, useMemo, useState } from "react";
-import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
+import { Suspense, lazy, useEffect, useMemo, useState } from "react";
+import {
+  BrowserRouter,
+  Navigate,
+  Route,
+  Routes,
+  useNavigate,
+  useParams,
+} from "react-router-dom";
 import {
   Authenticated,
   AuthLoading,
   ConvexReactClient,
   Unauthenticated,
+  useMutation,
   useQuery,
 } from "convex/react";
 import { ConvexAuthProvider } from "@convex-dev/auth/react";
@@ -42,6 +50,8 @@ export default function App() {
           <SiteHeader />
           <Routes>
             <Route path="/games" element={<GamesHome />} />
+            <Route path="/games/:code" element={<GamesHome />} />
+            <Route path="/join/:code" element={<JoinGame />} />
             <Route path="/standings" element={<StandingsPage />} />
             <Route path="/fixtures" element={<FixturesPage />} />
             <Route path="/results" element={<ResultsPage />} />
@@ -225,6 +235,40 @@ function GamesHome() {
       <LiveApp onExit={exit} />
     </Suspense>
   );
+}
+
+// ── /join/:code — an invite link. Auto-joins, then drops into the room ─
+// This route lives inside <Authenticated>, so a logged-out friend hits the
+// auth gate first; the URL is preserved through login and this runs after.
+function JoinGame() {
+  const { code } = useParams();
+  const navigate = useNavigate();
+  const joinRoom = useMutation(api.rooms.joinRoom);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function go() {
+      if (!code) return navigate("/games", { replace: true });
+      // Following an invite means you're entering the draw — skip the splash.
+      localStorage.setItem("wc_entered", "1");
+      // Try to join as a player. If that's blocked (the draw already started,
+      // or the room is full) we still open the room so they can watch — only a
+      // genuinely missing room sends them back to the list (handled by the
+      // room view, which bounces to /games when getRoom returns null).
+      try {
+        await joinRoom({ code });
+      } catch {
+        /* not a member and can't join now — fall through to spectate */
+      }
+      if (!cancelled) navigate(`/games/${code}`, { replace: true });
+    }
+    void go();
+    return () => {
+      cancelled = true;
+    };
+  }, [code]);
+
+  return <div className="center-stage" />;
 }
 
 function Welcome({ onEnter }: { onEnter: () => void }) {

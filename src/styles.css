@@ -21,7 +21,7 @@
 .fx-badge,.fx-venue,.fx-drawersub{font-weight:500}
 
 *{box-sizing:border-box;margin:0;padding:0}
-html{scroll-behavior:smooth;background:var(--bg)}
+html{scroll-behavior:smooth;background:var(--bg);-webkit-text-size-adjust:100%}
 body{
   background:transparent;
   color:var(--ink);
@@ -31,8 +31,16 @@ body{
   -webkit-font-smoothing:antialiased;
   letter-spacing:.1px;
   min-height:100vh;
+  min-height:100dvh;
+  overflow-x:hidden;           /* guard against accidental sideways scroll */
 }
-.wrap{max-width:1180px;margin:0 auto;padding:0 22px}
+/* Horizontal page padding honours the notch in landscape (viewport-fit=cover). */
+.wrap{
+  max-width:1180px;margin:0 auto;
+  padding:0 22px;
+  padding-left:max(22px,env(safe-area-inset-left));
+  padding-right:max(22px,env(safe-area-inset-right));
+}
 
 /* ── Sliding photo background (right → left) ───────── */
 .bg-slide{
@@ -75,7 +83,9 @@ body{
 .auth-head h1{color:#fff;font-weight:400;text-shadow:0 2px 14px rgba(0,0,0,.45)}
 /* Vertically centre the title + sign-on card in the viewport. */
 .auth-screen{
-  min-height:100vh;display:flex;flex-direction:column;
+  min-height:100vh;
+  min-height:100dvh;
+  display:flex;flex-direction:column;
   align-items:center;justify-content:center;
   padding:72px 0 40px;
 }
@@ -101,7 +111,10 @@ body{
 }
 .site-header-inner{
   max-width:1180px;margin:0 auto;height:var(--header-h);
-  padding:0 22px;display:flex;align-items:center;gap:18px;
+  padding:0 22px;
+  padding-left:max(22px,env(safe-area-inset-left));
+  padding-right:max(22px,env(safe-area-inset-right));
+  display:flex;align-items:center;gap:18px;
 }
 .brand{
   font-family:'Fraunces',serif;font-weight:400;font-size:21px;line-height:1;
@@ -184,7 +197,7 @@ header.wrap{padding-top:38px}
 /* Small text that sits directly on the photo background — darkened + a soft
    light halo so it stays legible over the busy imagery. */
 .kicker{font-size:12px;letter-spacing:3px;text-transform:uppercase;color:var(--ink);font-weight:500;margin-bottom:12px;text-shadow:0 1px 3px rgba(244,241,236,.9)}
-h1{font-family:'Fraunces',serif;font-weight:400;font-size:clamp(34px,7vw,68px);line-height:.96;letter-spacing:-1px}
+h1{font-family:'Fraunces',serif;font-weight:400;font-size:clamp(30px,7vw,68px);line-height:.98;letter-spacing:-1px;text-wrap:balance;overflow-wrap:break-word}
 h1 em{font-style:italic;color:var(--accent)}
 .sub{margin:16px auto 0;max-width:460px;color:var(--ink);font-weight:400;font-size:15px;text-shadow:0 1px 3px rgba(244,241,236,.9)}
 
@@ -255,11 +268,22 @@ h1 em{font-style:italic;color:var(--accent)}
 /* ── My games list ─────────────────────────────── */
 .games{display:flex;flex-direction:column;gap:10px;margin:6px 0 4px}
 .gamecard{
-  display:flex;align-items:center;gap:14px;text-align:left;width:100%;
+  display:flex;align-items:center;gap:10px;width:100%;
   background:#faf8f3;border:1px solid var(--line);border-radius:14px;
-  padding:14px 16px;cursor:pointer;font-family:'Outfit';transition:border .2s,transform .15s;
+  padding:14px 16px;font-family:'Outfit';transition:border .2s,transform .15s;
 }
 .gamecard:hover{border-color:var(--gold);transform:translateY(-1px)}
+.gc-open{
+  display:flex;align-items:center;gap:14px;text-align:left;flex:1;min-width:0;
+  background:none;border:0;padding:0;cursor:pointer;font:inherit;color:inherit;
+}
+.gc-copy{
+  flex-shrink:0;background:transparent;border:1px solid var(--line);
+  color:var(--muted);border-radius:999px;padding:7px 13px;font-family:'Outfit';
+  font-size:12px;font-weight:500;cursor:pointer;transition:border .2s,color .2s;
+}
+.gc-copy:hover{border-color:var(--gold);color:var(--ink)}
+.invite-row{display:flex;justify-content:center;margin-top:14px}
 .gamecard .gc-main{display:flex;flex-direction:column;gap:3px;min-width:0;flex:1}
 .gamecard .gc-name{font-family:'Fraunces',serif;font-size:18px;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .gamecard .gc-meta{font-size:12px;color:var(--muted);display:flex;align-items:center;gap:8px}
@@ -332,7 +356,7 @@ h1 em{font-style:italic;color:var(--accent)}
 .groups{display:grid;grid-template-columns:repeat(2,1fr);gap:16px}
 .grouptable{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);overflow:hidden}
 .gt-title{padding:13px 16px;border-bottom:1px solid var(--line);font-family:'Fraunces',serif;font-size:17px}
-.gt-scroll{overflow-x:auto}
+.gt-scroll{overflow-x:auto;-webkit-overflow-scrolling:touch}
 .gt-head,.gt-row{display:grid;grid-template-columns:minmax(140px,1fr) repeat(8,28px) 60px;align-items:center;gap:2px;min-width:460px}
 .gt-head{padding:9px 16px;font-size:11px;letter-spacing:.5px;text-transform:uppercase;color:var(--muted);border-bottom:1px solid var(--line)}
 .gt-row{padding:11px 16px;border-top:1px solid var(--line);font-size:14px}
@@ -419,7 +443,7 @@ footer{text-align:center;color:var(--ink);font-weight:400;font-size:12px;padding
 .fx-drawerhead{display:flex;align-items:center;justify-content:space-between;padding:20px 20px 16px;border-bottom:1px solid var(--line);background:var(--card)}
 .fx-drawertitle{font-family:'Fraunces',serif;font-size:22px}
 .fx-drawersub{font-size:12px;color:var(--muted)}
-.fx-close{background:#f0ece3;border:none;width:34px;height:34px;border-radius:50%;font-size:15px;cursor:pointer;color:var(--ink);flex-shrink:0}
+.fx-close{background:#f0ece3;border:none;width:40px;height:40px;border-radius:50%;font-size:15px;cursor:pointer;color:var(--ink);flex-shrink:0}
 .fx-close:hover{background:#e6e1d8}
 .fx-filter{display:flex;gap:8px;padding:14px 20px;background:var(--card);border-bottom:1px solid var(--line)}
 .fx-chip{background:#f0ece3;border:1px solid var(--line);border-radius:999px;padding:7px 16px;font-family:'Outfit';font-size:13px;color:var(--ink);cursor:pointer}
@@ -443,9 +467,51 @@ footer{text-align:center;color:var(--ink);font-weight:400;font-size:12px;padding
 }
 @media(max-width:620px){
   .players{grid-template-columns:1fr}
-  .turnbar{flex-wrap:wrap}
+  /* The flex-1 spacer fills the first row, dropping the full-width draw button
+     (.turnbar .btn is width:100%) onto its own line below. */
+  .turnbar{flex-wrap:wrap;padding:14px 16px;gap:10px}
   .turnbar .btn{width:100%}
   .tiers{grid-template-columns:1fr}
+}
+
+/* ── Phones: tighten padding, scale heroes, reflow tight rows ───────── */
+@media(max-width:520px){
+  /* Reclaim horizontal space — 22px each side is a lot on a 360px screen. */
+  .wrap{
+    padding:0 16px;
+    padding-left:max(16px,env(safe-area-inset-left));
+    padding-right:max(16px,env(safe-area-inset-right));
+  }
+  .center-stage{padding:0 16px}
+  .section{padding:22px 0}
+
+  /* Heroes: less top air, a touch smaller copy. */
+  header{padding:32px 0 18px}
+  header.wrap{padding-top:26px}
+  .sub{font-size:14px;margin-top:12px}
+  .kicker{margin-bottom:10px}
+
+  /* Section heads: let the descriptor wrap under the title, drop the rule. */
+  .shead{flex-wrap:wrap;gap:4px 12px;margin-bottom:16px}
+  .shead h2{flex:0 0 100%}
+  .shead .rule{display:none}
+
+  /* Squad + standings cards: trim inner padding so content breathes. */
+  .player{padding:16px 16px 14px}
+  .stand-row{gap:10px;padding:11px 12px}
+  .stand-rank{font-size:17px;min-width:18px}
+  .stand-pts{font-size:21px}
+
+  /* Lobby panels + roster. */
+  .panel{padding:22px 18px}
+  .code-badge{font-size:26px;letter-spacing:4px;padding:12px 18px}
+
+  /* Avatar + name + change-picture button stack instead of overflowing. */
+  .account-pic{flex-wrap:wrap;gap:14px}
+
+  /* CTA banner. */
+  .banner{padding:30px 22px;margin:20px 0 40px}
+  .banner h3{font-size:24px}
 }
 
 /* ── Avatars + My Account ─────────────────────────────── */
