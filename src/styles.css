@@ -209,8 +209,9 @@ h1 em{font-style:italic;color:var(--accent)}
 .chip.pool{background:var(--ink);color:#fff;border-color:var(--ink)}
 .chip.pool .dot{background:var(--gold)}
 
-/* Sections */
-.section{padding:30px 0}
+/* Sections — vertical only, so it doesn't clobber .wrap's side padding
+   on elements that carry both classes (.section.wrap). */
+.section{padding-top:30px;padding-bottom:30px}
 .shead{display:flex;align-items:baseline;gap:14px;margin-bottom:20px}
 .shead h2{font-family:'Fraunces',serif;font-weight:400;font-size:24px;letter-spacing:-.3px}
 .shead span{color:var(--muted);font-size:13px}
@@ -483,7 +484,7 @@ footer{text-align:center;color:var(--ink);font-weight:400;font-size:12px;padding
     padding-right:max(16px,env(safe-area-inset-right));
   }
   .center-stage{padding:0 16px}
-  .section{padding:22px 0}
+  .section{padding-top:22px;padding-bottom:22px}
 
   /* Heroes: less top air, a touch smaller copy. */
   header{padding:32px 0 18px}
