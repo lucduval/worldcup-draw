@@ -79,7 +79,7 @@ export default function MyAccount() {
           My <em>account</em>
         </h1>
         <p className="sub">
-          Set how you show up in every draw — your name and a profile picture.
+          Set how you show up in every draw - your name and a profile picture.
         </p>
       </header>
 

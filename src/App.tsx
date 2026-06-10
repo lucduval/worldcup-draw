@@ -21,6 +21,7 @@ import AuthScreen from "./AuthScreen";
 import SiteHeader from "./SiteHeader";
 import MyAccount from "./MyAccount";
 import HowItWorks from "./HowItWorks";
+import WorldCupFacts from "./WorldCupFacts";
 import Fixtures from "./FixturesView";
 
 // The room UI is the heavy part of the app. Loading it lazily keeps the
@@ -56,6 +57,7 @@ export default function App() {
             <Route path="/fixtures" element={<FixturesPage />} />
             <Route path="/results" element={<ResultsPage />} />
             <Route path="/how-it-works" element={<HowItWorks />} />
+            <Route path="/facts" element={<WorldCupFacts />} />
             <Route path="/account" element={<MyAccount />} />
             <Route path="*" element={<Navigate to="/games" replace />} />
           </Routes>
@@ -65,7 +67,7 @@ export default function App() {
   );
 }
 
-// ── Fixtures page — reuses the shared schedule component ─────
+// ── Fixtures page - reuses the shared schedule component ─────
 function FixturesPage() {
   return (
     <>
@@ -84,7 +86,7 @@ function FixturesPage() {
   );
 }
 
-// ── Standings page — the 12 World Cup groups, live from football-data.org ─
+// ── Standings page - the 12 World Cup groups, live from football-data.org ─
 function StandingsPage() {
   const groups = useQuery(api.results.groups);
   return (
@@ -96,7 +98,7 @@ function StandingsPage() {
         </h1>
         <p className="sub">
           All twelve groups, updated live through the tournament. 3 pts a win, 1
-          a draw — the table that decides every squad’s fate.
+          a draw - the table that decides every squad’s fate.
         </p>
       </header>
 
@@ -171,7 +173,7 @@ function GroupTable({
   );
 }
 
-// ── Results page — placeholder until scores go live ─────────
+// ── Results page - placeholder until scores go live ─────────
 function ResultsPage() {
   return (
     <>
@@ -238,7 +240,7 @@ function GamesHome() {
   );
 }
 
-// ── /join/:code — an invite link. Auto-joins, then drops into the room ─
+// ── /join/:code - an invite link. Auto-joins, then drops into the room ─
 // This route lives inside <Authenticated>, so a logged-out friend hits the
 // auth gate first; the URL is preserved through login and this runs after.
 function JoinGame() {
@@ -250,16 +252,16 @@ function JoinGame() {
     let cancelled = false;
     async function go() {
       if (!code) return navigate("/games", { replace: true });
-      // Following an invite means you're entering the draw — skip the splash.
+      // Following an invite means you're entering the draw - skip the splash.
       localStorage.setItem("wc_entered", "1");
       // Try to join as a player. If that's blocked (the draw already started,
-      // or the room is full) we still open the room so they can watch — only a
+      // or the room is full) we still open the room so they can watch - only a
       // genuinely missing room sends them back to the list (handled by the
       // room view, which bounces to /games when getRoom returns null).
       try {
         await joinRoom({ code });
       } catch {
-        /* not a member and can't join now — fall through to spectate */
+        /* not a member and can't join now - fall through to spectate */
       }
       if (!cancelled) navigate(`/games/${code}`, { replace: true });
     }
@@ -281,7 +283,7 @@ function Welcome({ onEnter }: { onEnter: () => void }) {
         </h1>
         <p className="sub">
           Forty-eight nations, three pots, one blind draw. Set your buy-in,
-          three teams each — best trio takes the pot.
+          three teams each - best trio takes the pot.
         </p>
       </header>
 

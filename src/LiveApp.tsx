@@ -92,7 +92,7 @@ export default function LiveApp({ onExit }: { onExit: () => void }) {
       <GamesList
         onEnter={enterRoom}
         onExit={onExit}
-        notice="That game no longer exists — start a fresh one."
+        notice="That game no longer exists - start a fresh one."
       />
     );
   }
@@ -182,7 +182,7 @@ function GamesList({
           My <em>games</em>
         </h1>
         <p className="sub">
-          Every draw you’re in, in one place — friends, family, work, whatever.
+          Every draw you’re in, in one place - friends, family, work, whatever.
           Jump into any of them, or start a new one.
         </p>
       </header>
@@ -194,7 +194,7 @@ function GamesList({
             <p className="hint">Loading…</p>
           ) : games.length === 0 ? (
             <p className="games-empty">
-              No games yet — create one below or join with a code.
+              No games yet - create one below or join with a code.
             </p>
           ) : (
             <div className="games">
@@ -236,7 +236,7 @@ function GamesList({
 
         <div className="panel">
           <div className="field">
-            <label>New draw — give it a name</label>
+            <label>New draw - give it a name</label>
             <input
               value={gameName}
               onChange={(e) => setGameName(e.target.value)}
@@ -464,7 +464,7 @@ function Room({
             </p>
             <p className="hint">
               Top {players.length * TIERS} teams play ·{" "}
-              {POOL.length - players.length * TIERS} sit out — the field trims to
+              {POOL.length - players.length * TIERS} sit out - the field trims to
               fit, so the strongest teams are always in.
             </p>
             <div className="roster">
@@ -523,7 +523,7 @@ function Room({
             <div className="panel">
               <h3>Your African team</h3>
               <p className="hint">
-                Pick your bonus African nation — it scores double. You can change
+                Pick your bonus African nation - it scores double. You can change
                 it any time before the host locks the draw.
               </p>
               <AfricanPicker
@@ -552,6 +552,10 @@ function Room({
     : undefined;
   const myTurn = !!currentPlayer && currentPlayer.userId === viewerId;
   const done = room.status === "done";
+  // Tier draw finished but the room hasn't locked: still waiting on one or more
+  // players to make their off-clock African bonus pick.
+  const awaitingAfrican = !done && !current;
+  const pendingAfrican = players.filter((p) => !p.africanTeam);
 
   return (
     <>
@@ -578,7 +582,22 @@ function Room({
       {!done && (
         <div className="wrap">
           <div className="turnbar">
-            {myTurn ? (
+            {awaitingAfrican ? (
+              <>
+                <div>
+                  <div className="turn-label">Almost there</div>
+                  <div className="turn-name">
+                    {pendingAfrican.length === 1
+                      ? `Waiting for ${pendingAfrican[0].name}'s African pick`
+                      : `Waiting for ${pendingAfrican.length} African picks`}
+                  </div>
+                </div>
+                <div className="spacer" />
+                <span className="turn-label">
+                  {me && !me.africanTeam ? "pick yours below ↓" : "almost locked…"}
+                </span>
+              </>
+            ) : myTurn ? (
               <>
                 <div>
                   <div className="turn-label">It’s your turn</div>
@@ -603,7 +622,7 @@ function Room({
               <>
                 <div>
                   <div className="turn-label">Now drawing</div>
-                  <div className="turn-name">{currentPlayer?.name ?? "—"}</div>
+                  <div className="turn-name">{currentPlayer?.name ?? "-"}</div>
                 </div>
                 <span
                   className="turn-tier"
@@ -646,8 +665,8 @@ function Room({
             <div className="afr-pick-block">
               <div className="afr-pick-head">
                 {me.africanTeam
-                  ? "Your African bonus team (scores double) — tap to change:"
-                  : "Pick your African bonus team (scores double) — any time before the draw locks:"}
+                  ? "Your African bonus team (scores double) - tap to change:"
+                  : "Pick your African bonus team (scores double) - any time before the draw locks:"}
               </div>
               <AfricanPicker
                 me={me}
@@ -701,7 +720,7 @@ function Room({
         </div>
       </section>
 
-      {/* Standings — live once the draw is locked and results roll in */}
+      {/* Standings - live once the draw is locked and results roll in */}
       {done && <Standings code={room.code} viewerId={viewerId} />}
 
       {/* Tier pools */}
@@ -754,7 +773,7 @@ function Room({
         </div>
       </section>
 
-      {/* Teams cut to fit the player count — shown so it's clear what's out */}
+      {/* Teams cut to fit the player count - shown so it's clear what's out */}
       {(() => {
         const cut = teams
           .filter((t) => t.tier === 0)
@@ -769,7 +788,7 @@ function Room({
               <h2>Left out</h2>
               <span>
                 {cut.length} team{cut.length === 1 ? "" : "s"} cut to fit{" "}
-                {players.length} players — top {players.length * TIERS} play
+                {players.length} players - top {players.length * TIERS} play
               </span>
               <div className="rule" />
             </div>
@@ -841,7 +860,7 @@ function Standings({
 
       {!anyResults && (
         <p className="hint" style={{ marginBottom: 14 }}>
-          No results yet — points appear here as World Cup matches are played.
+          No results yet - points appear here as World Cup matches are played.
         </p>
       )}
 
@@ -884,7 +903,7 @@ function Standings({
   );
 }
 
-// The African bonus picker — a free, off-the-clock choice every player makes for
+// The African bonus picker - a free, off-the-clock choice every player makes for
 // themselves. Highlights the current pick and blocks any nation the player has
 // already drawn from a tier, so the bonus team never duplicates a drawn one.
 function AfricanPicker({

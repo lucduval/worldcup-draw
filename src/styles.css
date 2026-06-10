@@ -69,7 +69,7 @@ body{
 }
 /* Landing / sign-up gate: full-colour photos sliding right→left, reusing the
    .bg-track / .bg-tile motion. Rendered after the global sliding tiles (same
-   z-index) so it paints over them — and with no cream veil, so the photos show
+   z-index) so it paints over them - and with no cream veil, so the photos show
    at full saturation. */
 .auth-slide{
   position:fixed;inset:0;z-index:-1;overflow:hidden;pointer-events:none;
@@ -92,7 +92,7 @@ body{
 /* Extra breathing room between the title and the sign-on card. */
 .auth-screen .center-stage{margin-top:40px;width:100%;max-width:409px;padding:0 12px}
 /* Sign-on card scaled up 20% from the shared .panel sizing. Each card sizes to
-   its own content so it stays tight — sign-in is naturally shorter than sign-up
+   its own content so it stays tight - sign-in is naturally shorter than sign-up
    (one fewer field), the same way every standard auth form behaves. */
 .auth-screen .panel{padding:31px 29px}
 .auth-screen .panel h3{font-size:24px}
@@ -190,11 +190,11 @@ body{
 
 /* Header */
 header{padding:46px 0 22px;text-align:center;position:relative}
-/* Page heroes sit below the sticky nav — give them breathing room. */
+/* Page heroes sit below the sticky nav - give them breathing room. */
 header.wrap{padding-top:38px}
-/* "Pick your game" hero — heavier weight, matching the sign-up title. */
+/* "Pick your game" hero - heavier weight, matching the sign-up title. */
 .pick-head h1{font-weight:400}
-/* Small text that sits directly on the photo background — darkened + a soft
+/* Small text that sits directly on the photo background - darkened + a soft
    light halo so it stays legible over the busy imagery. */
 .kicker{font-size:12px;letter-spacing:3px;text-transform:uppercase;color:var(--ink);font-weight:500;margin-bottom:12px;text-shadow:0 1px 3px rgba(244,241,236,.9)}
 h1{font-family:'Fraunces',serif;font-weight:400;font-size:clamp(30px,7vw,68px);line-height:.98;letter-spacing:-1px;text-wrap:balance;overflow-wrap:break-word}
@@ -209,7 +209,7 @@ h1 em{font-style:italic;color:var(--accent)}
 .chip.pool{background:var(--ink);color:#fff;border-color:var(--ink)}
 .chip.pool .dot{background:var(--gold)}
 
-/* Sections — vertical only, so it doesn't clobber .wrap's side padding
+/* Sections - vertical only, so it doesn't clobber .wrap's side padding
    on elements that carry both classes (.section.wrap). */
 .section{padding-top:30px;padding-bottom:30px}
 .shead{display:flex;align-items:baseline;gap:14px;margin-bottom:20px}
@@ -421,7 +421,7 @@ h1 em{font-style:italic;color:var(--accent)}
 .banner p{color:rgba(244,241,236,.72);font-size:14px;margin-bottom:0;position:relative}
 .banner .winner{font-family:'Fraunces',serif;font-style:italic;color:var(--gold)}
 
-/* footer + leave links also sit on the photo background — keep them legible. */
+/* footer + leave links also sit on the photo background - keep them legible. */
 footer{text-align:center;color:var(--ink);font-weight:400;font-size:12px;padding:0 0 40px;text-shadow:0 1px 3px rgba(244,241,236,.9)}
 .leave{display:block;margin:0 auto 30px;background:none;border:none;color:var(--ink);font-weight:500;font-size:13px;text-decoration:underline;cursor:pointer;font-family:'Outfit';text-shadow:0 1px 3px rgba(244,241,236,.9)}
 
@@ -520,7 +520,7 @@ footer{text-align:center;color:var(--ink);font-weight:400;font-size:12px;padding
 
 /* ── Phones: tighten padding, scale heroes, reflow tight rows ───────── */
 @media(max-width:520px){
-  /* Reclaim horizontal space — 22px each side is a lot on a 360px screen. */
+  /* Reclaim horizontal space - 22px each side is a lot on a 360px screen. */
   .wrap{
     padding:0 16px;
     padding-left:max(16px,env(safe-area-inset-left));

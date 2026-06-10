@@ -1,6 +1,6 @@
 import { ENTRY_FEE, TIERS } from "../convex/pool";
 
-// ── How it works — a plain-language guide to the whole game ──
+// ── How it works - a plain-language guide to the whole game ──
 // Deliberately simple: short numbered steps anyone can follow, then the
 // scoring, then donation banking details (placeholders for now).
 const STEPS: { title: string; body: string }[] = [
@@ -10,15 +10,15 @@ const STEPS: { title: string; body: string }[] = [
   },
   {
     title: "Everyone pays in",
-    body: `Each player puts in the same buy-in (default R${ENTRY_FEE}). Add it all up and that's the pot — the prize the winner takes home.`,
+    body: `Each player puts in the same buy-in (default R${ENTRY_FEE}). Add it all up and that's the pot - the prize the winner takes home.`,
   },
   {
     title: "The live draw",
-    body: `Teams are split into ${TIERS} pots — strong, middle and outsiders. On your turn you tap to draw, and you get one random team from each pot. No picking — it's pure luck.`,
+    body: `Teams are split into ${TIERS} pots - strong, middle and outsiders. On your turn you tap to draw, and you get one random team from each pot. No picking - it's pure luck.`,
   },
   {
     title: "Pick your African team",
-    body: "On top of your drawn teams, choose one African nation as a bonus. It's your free pick — and it scores double points.",
+    body: "On top of your drawn teams, choose one African nation as a bonus. It's your free pick - and it scores double points.",
   },
   {
     title: "Follow the World Cup",
@@ -84,7 +84,7 @@ export default function HowItWorks() {
           </div>
         </div>
         <p className="hint" style={{ marginTop: 16 }}>
-          Your total is every team's points added together — with your African
+          Your total is every team's points added together - with your African
           pick counted twice. Highest total when the World Cup ends wins.
         </p>
       </section>
@@ -92,7 +92,7 @@ export default function HowItWorks() {
       <section className="section wrap">
         <div className="shead">
           <h2>Support the project</h2>
-          <span>donations welcome — completely optional</span>
+          <span>donations welcome - completely optional</span>
           <div className="rule" />
         </div>
         <p className="hint" style={{ marginBottom: 18 }}>

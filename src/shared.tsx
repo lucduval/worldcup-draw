@@ -18,7 +18,7 @@ export function shuffle<T>(arr: T[]): T[] {
 // A round profile picture, falling back to the player's initial when they
 // haven't set one. Used across rosters, squad cards, standings and the header.
 // When `enlargeable` is set, tapping it opens a lightbox with the full-size
-// picture — handy for sizing up the other players in a game.
+// picture - handy for sizing up the other players in a game.
 export function Avatar({
   src,
   name,
@@ -107,7 +107,7 @@ export function Avatar({
 }
 
 // Copies a shareable invite link (/join/CODE) to the clipboard. Friends who
-// open it are auto-joined into the game — the link survives the login gate.
+// open it are auto-joined into the game - the link survives the login gate.
 export function CopyInvite({
   code,
   className = "btn ghost",
@@ -120,7 +120,7 @@ export function CopyInvite({
   const [copied, setCopied] = useState(false);
 
   async function copy(e: React.MouseEvent) {
-    // Game cards are themselves clickable — don't open the room when copying.
+    // Game cards are themselves clickable - don't open the room when copying.
     e.stopPropagation();
     const url = `${window.location.origin}/join/${code}`;
     try {
@@ -136,7 +136,7 @@ export function CopyInvite({
       try {
         document.execCommand("copy");
       } catch {
-        /* give up silently — the button just won't confirm */
+        /* give up silently - the button just won't confirm */
       }
       document.body.removeChild(ta);
     }

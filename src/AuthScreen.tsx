@@ -24,7 +24,7 @@ function AuthBgSlide() {
 }
 
 // The welcome landing + sign up / sign in gate. This is the very first thing
-// every visitor sees — game-mode selection only happens once you're in.
+// every visitor sees - game-mode selection only happens once you're in.
 export default function AuthScreen() {
   const { signIn } = useAuthActions();
   const [flow, setFlow] = useState<"signIn" | "signUp">("signUp");
@@ -55,7 +55,7 @@ export default function AuthScreen() {
     } catch {
       setErr(
         isSignUp
-          ? "Couldn’t sign up — that email may already be registered."
+          ? "Couldn’t sign up - that email may already be registered."
           : "Wrong email or password.",
       );
       setBusy(false);
@@ -78,7 +78,7 @@ export default function AuthScreen() {
           <h3>{isSignUp ? "Create your account" : "Welcome back"}</h3>
           <p className="hint">
             {isSignUp
-              ? "One account, all your games — on any device."
+              ? "One account, all your games - on any device."
               : "Sign in to pick up your draws."}
           </p>
 

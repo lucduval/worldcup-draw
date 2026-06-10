@@ -74,7 +74,7 @@ export default function Fixtures({
           </button>
         </div>
         {strip.length === 0 ? (
-          <div className="fx-empty">No upcoming matches — that's a wrap. 🏆</div>
+          <div className="fx-empty">No upcoming matches - that's a wrap. 🏆</div>
         ) : (
           <div className="fx-list">
             {strip.map((f, i) => (

@@ -1,6 +1,6 @@
 // 2026 FIFA World Cup schedule (hosts USA / Canada / Mexico).
 // Final draw 5 Dec 2025; full schedule released 6 Dec 2025.
-// Kickoffs stored as UTC instants — rendered in SAST (Africa/Johannesburg,
+// Kickoffs stored as UTC instants - rendered in SAST (Africa/Johannesburg,
 // UTC+2, no DST) by the helpers below. 72 group matches + 32 knockout slots.
 import { POOL } from "../convex/pool";
 
@@ -117,7 +117,7 @@ const GROUP_MATCHES: Omit<Fixture, "teamsKnown">[] = [
   { round: "group", group: "L", utc: "2026-06-27T21:00:00Z", venue: "Lincoln Financial Field, Philadelphia", home: "Croatia", away: "Ghana" },
 ];
 
-// Knockout slots — teams decided by group results, so home/away are bracket labels.
+// Knockout slots - teams decided by group results, so home/away are bracket labels.
 const KO: { round: Round; utc: string; venue: string; label: string }[] = [
   { round: "R32", utc: "2026-06-28T19:00:00Z", venue: "SoFi Stadium, Inglewood", label: "2A vs 2B" },
   { round: "R32", utc: "2026-06-29T20:30:00Z", venue: "Gillette Stadium, Foxborough", label: "1E vs 3(A/B/C/D/F)" },

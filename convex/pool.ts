@@ -1,5 +1,5 @@
 // Single source of truth shared by the Convex backend AND the React client.
-// 48 nations, three tiers of 16. Edit freely — flags are emoji.
+// 48 nations, three tiers of 16. Edit freely - flags are emoji.
 
 // How long a tier draw stays on screen: the reel spins, lands on the drawn
 // flag, then holds on it so everyone sees who got what before the next turn.
@@ -13,7 +13,7 @@ export type PoolTeam = { name: string; flag: string; tier: number };
 // ORDER IS LOAD-BEARING: the array index is each team's global ranking, used to
 // split the field into tiers and to trim it to the player count (see RANK_BY_NAME
 // and tierForRank). Ordered by the official FIFA/Coca-Cola Men's World Ranking
-// (April 2026) with non-qualifiers removed — so e.g. Italy (#12) and Denmark
+// (April 2026) with non-qualifiers removed - so e.g. Italy (#12) and Denmark
 // (#20) don't appear. The lowest ~11 teams sit below FIFA #50, where the public
 // ranking is noisy, so their order among themselves is best-effort; all land in
 // Tier 3 / the cut zone regardless. Iraq and DR Congo came through the
@@ -98,7 +98,7 @@ export function tierForRank(rank: number, playerCount: number): number {
 }
 
 // The African nations inside the 48-team pool. Every player freely chooses one
-// of these as a bonus team (off the draw clock — anyone can pick on entry, and
+// of these as a bonus team (off the draw clock - anyone can pick on entry, and
 // duplicates across players are allowed), so this list is always fully
 // available regardless of the main draw.
 export const AFRICAN_NAMES = [

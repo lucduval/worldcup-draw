@@ -35,7 +35,7 @@ function shuffle<T>(arr: T[]): T[] {
 
 // Each player ends with four teams to track: their freely-chosen African team
 // plus one drawn from each tier. The African pick happens off the turn clock
-// (anyone can choose it on entry — see pickAfrican), so the live draw is just
+// (anyone can choose it on entry - see pickAfrican), so the live draw is just
 // the three tier rounds:
 //   round 0 → tier 1   round 1 → tier 2   round 2 → tier 3   (random draws)
 // A player's own African team is excluded from their tier draws, so the two can
@@ -86,6 +86,15 @@ async function retierForDraw(
   }
 }
 
+// The off-clock African bonus pick must be in for every player before the draw
+// can lock - otherwise finishing the last tier pick would shut out anyone still
+// choosing (pickAfrican refuses once the room is "done"). The tier draw may
+// complete first; the room only flips to "done" once the final African pick
+// lands too (see draw / hostDraw / pickAfrican).
+function allAfricanPicked(players: Doc<"players">[]): boolean {
+  return players.every((p) => !!p.africanTeam);
+}
+
 // A random African nation, used when a turn is auto-resolved rather than chosen.
 function randomAfrican(): { name: string; flag: string } {
   const c = AFRICAN_POOL[Math.floor(Math.random() * AFRICAN_POOL.length)];
@@ -102,7 +111,7 @@ function whoseTurn(turnOrder: Id<"players">[], pickIndex: number) {
   return { playerId: turnOrder[idx], tier: round + 1, round };
 }
 
-// Identity is always derived server-side from the signed-in session — never
+// Identity is always derived server-side from the signed-in session - never
 // trusted from a client argument.
 async function requireUser(ctx: QueryCtx | MutationCtx): Promise<Id<"users">> {
   const userId = await getAuthUserId(ctx);
@@ -118,7 +127,7 @@ async function displayName(
   return (user?.name ?? "").trim() || "Player";
 }
 
-// The games the signed-in account belongs to — and only those.
+// The games the signed-in account belongs to - and only those.
 export const myGames = query({
   args: {},
   handler: async (ctx) => {
@@ -180,7 +189,11 @@ export const getRoom = query({
       playerId: Id<"players">;
       tier: number;
     };
-    if (room.status === "drawing" && room.turnOrder.length > 0) {
+    if (
+      room.status === "drawing" &&
+      room.turnOrder.length > 0 &&
+      room.pickIndex < totalPicks(room.turnOrder.length)
+    ) {
       const w = whoseTurn(room.turnOrder, room.pickIndex);
       current = { playerId: w.playerId, tier: w.tier };
     }
@@ -272,7 +285,7 @@ export const joinRoom = mutation({
       .query("rooms")
       .withIndex("by_code", (q) => q.eq("code", code.toUpperCase().trim()))
       .unique();
-    if (!room) throw new Error("Room not found — check the code.");
+    if (!room) throw new Error("Room not found - check the code.");
 
     const players = await ctx.db
       .query("players")
@@ -366,22 +379,34 @@ export const draw = mutation({
     const stillRevealing = teams.some(
       (t) => t.assignedAt && now < t.assignedAt + REVEAL_MS,
     );
-    if (stillRevealing) throw new Error("Hold on — a team is being revealed.");
+    if (stillRevealing) throw new Error("Hold on - a team is being revealed.");
 
     const pick = pickTierTeam(teams, tier, current.africanTeam?.name);
     if (!pick) throw new Error("No teams left in this tier.");
     await ctx.db.patch(pick._id, { ownerId: playerId, assignedAt: now });
 
     const nextIndex = room.pickIndex + 1;
+    // Lock only once the tier picks are done AND every player has made their
+    // off-clock African bonus pick - never strand a straggler still choosing.
+    // Until then the room stays "drawing" with the tier draw finished; the last
+    // African pick flips it to "done" (see pickAfrican).
+    let done = false;
+    if (nextIndex >= total) {
+      const allPlayers = await ctx.db
+        .query("players")
+        .withIndex("by_room", (q) => q.eq("roomId", room._id))
+        .collect();
+      done = allAfricanPicked(allPlayers);
+    }
     await ctx.db.patch(room._id, {
       pickIndex: nextIndex,
-      status: nextIndex >= total ? "done" : "drawing",
+      status: done ? "done" : "drawing",
     });
   },
 });
 
 // The bonus pick: every player freely chooses an African nation for themselves.
-// This is off the turn clock — anyone can pick (or change their pick) the moment
+// This is off the turn clock - anyone can pick (or change their pick) the moment
 // they're in the room, right up until the draw locks. Duplicates across players
 // are fine. A player can't pick a nation they've already drawn from a tier, so
 // their African team and tier teams never collide.
@@ -412,11 +437,22 @@ export const pickAfrican = mutation({
       .withIndex("by_room", (q) => q.eq("roomId", room._id))
       .collect();
     if (drawn.some((t) => t.ownerId === me._id && t.name === choice.name))
-      throw new Error("You already drew that team — pick a different one.");
+      throw new Error("You already drew that team - pick a different one.");
 
     await ctx.db.patch(me._id, {
       africanTeam: { name: choice.name, flag: choice.flag },
     });
+
+    // If the tier draw already finished and this was the last outstanding
+    // African pick, the draw is now fully settled - lock it.
+    const total = totalPicks(room.turnOrder.length);
+    if (
+      room.status === "drawing" &&
+      room.pickIndex >= total &&
+      players.every((p) => p._id === me._id || !!p.africanTeam)
+    ) {
+      await ctx.db.patch(room._id, { status: "done" });
+    }
   },
 });
 
@@ -454,22 +490,34 @@ export const hostDraw = mutation({
     const stillRevealing = teams.some(
       (t) => t.assignedAt && now < t.assignedAt + REVEAL_MS,
     );
-    if (stillRevealing) throw new Error("Hold on — a team is being revealed.");
+    if (stillRevealing) throw new Error("Hold on - a team is being revealed.");
 
     const pick = pickTierTeam(teams, tier, current.africanTeam?.name);
     if (!pick) throw new Error("No teams left in this tier.");
     await ctx.db.patch(pick._id, { ownerId: playerId, assignedAt: now });
 
     const nextIndex = room.pickIndex + 1;
+    // Lock only once the tier picks are done AND every player has made their
+    // off-clock African bonus pick - never strand a straggler still choosing.
+    // Until then the room stays "drawing" with the tier draw finished; the last
+    // African pick flips it to "done" (see pickAfrican).
+    let done = false;
+    if (nextIndex >= total) {
+      const allPlayers = await ctx.db
+        .query("players")
+        .withIndex("by_room", (q) => q.eq("roomId", room._id))
+        .collect();
+      done = allAfricanPicked(allPlayers);
+    }
     await ctx.db.patch(room._id, {
       pickIndex: nextIndex,
-      status: nextIndex >= total ? "done" : "drawing",
+      status: done ? "done" : "drawing",
     });
   },
 });
 
-// Skip the live draw entirely: the host assigns every remaining pick at once —
-// random tier teams and a random African nation for anyone who hasn't chosen —
+// Skip the live draw entirely: the host assigns every remaining pick at once -
+// random tier teams and a random African nation for anyone who hasn't chosen -
 // and the draw jumps straight to done. Works from the lobby (allocate the whole
 // field) or mid-draw (finish whatever's left). No reveal animation: results
 // simply appear, since the point is to settle everyone immediately.
@@ -540,7 +588,7 @@ export const autoAllocate = mutation({
   },
 });
 
-// Permanently delete a game — only the host can do this. Removes the room and
+// Permanently delete a game - only the host can do this. Removes the room and
 // everything scoped to it (player seats and the team pool). Shared data
 // (matches, group standings) is untouched.
 export const deleteRoom = mutation({

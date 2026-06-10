@@ -7,7 +7,7 @@ const MAX_NAME = 18;
 
 // Resolve profile-picture URLs for a set of users in one pass. Storage URLs
 // are signed, so they're computed at read time rather than denormalised onto
-// each game seat — that keeps avatars consistent everywhere automatically.
+// each game seat - that keeps avatars consistent everywhere automatically.
 export async function avatarUrls(
   ctx: QueryCtx | MutationCtx,
   userIds: Id<"users">[],

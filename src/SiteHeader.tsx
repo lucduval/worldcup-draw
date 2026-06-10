@@ -15,6 +15,7 @@ const NAV: NavItem[] = [
   { to: "/standings", label: "Standings" },
   { to: "/fixtures", label: "Fixtures" },
   { to: "/results", label: "Results", soon: true },
+  { to: "/facts", label: "WC facts" },
 ];
 
 export default function SiteHeader() {

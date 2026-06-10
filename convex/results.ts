@@ -60,7 +60,7 @@ export const syncResults = internalAction({
   handler: async (ctx) => {
     const key = process.env.FOOTBALL_API_KEY;
     if (!key) {
-      console.log("FOOTBALL_API_KEY not set — skipping results sync.");
+      console.log("FOOTBALL_API_KEY not set - skipping results sync.");
       return;
     }
 
@@ -89,7 +89,7 @@ export const syncResults = internalAction({
     };
 
     // Knockout fixtures arrive with null team names until the bracket fills in;
-    // skip those — a later sync will upsert them once the teams are known.
+    // skip those - a later sync will upsert them once the teams are known.
     const all = body.matches ?? [];
     const matches = all
       .filter((m) => m.homeTeam?.name && m.awayTeam?.name)

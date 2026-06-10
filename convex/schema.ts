@@ -7,7 +7,7 @@ export default defineSchema({
   // signed-in account; we reference it as the owner of rooms and players.
   ...authTables,
 
-  // Override Auth's `users` table to add `imageId` — a reference to the
+  // Override Auth's `users` table to add `imageId` - a reference to the
   // profile picture in Convex file storage. All other fields mirror the
   // built-in Auth schema verbatim (see @convex-dev/auth authTables).
   users: defineTable({
@@ -63,7 +63,7 @@ export default defineSchema({
   }).index("by_room", ["roomId"]),
 
   // World Cup match results, synced from football-data.org. Shared by every
-  // room — standings are computed per room from the teams each player owns.
+  // room - standings are computed per room from the teams each player owns.
   // Team names are normalised to our pool names on the way in (see results.ts).
   matches: defineTable({
     extId: v.number(), // football-data match id (for idempotent upserts)
@@ -81,7 +81,7 @@ export default defineSchema({
     utcDate: v.string(),
   }).index("by_ext", ["extId"]),
 
-  // Group standings synced from football-data.org — one row per group (A–L),
+  // Group standings synced from football-data.org - one row per group (A–L),
   // each holding its ordered table. Team names/flags normalised to our pool.
   groupStandings: defineTable({
     group: v.string(), // "Group A"
