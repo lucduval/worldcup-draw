@@ -425,6 +425,27 @@ h1 em{font-style:italic;color:var(--accent)}
 footer{text-align:center;color:var(--ink);font-weight:400;font-size:12px;padding:0 0 40px;text-shadow:0 1px 3px rgba(244,241,236,.9)}
 .leave{display:block;margin:0 auto 30px;background:none;border:none;color:var(--ink);font-weight:500;font-size:13px;text-decoration:underline;cursor:pointer;font-family:'Outfit';text-shadow:0 1px 3px rgba(244,241,236,.9)}
 
+/* ── How it works ─────────────────────────────────────── */
+.hiw-steps{list-style:none;display:flex;flex-direction:column;gap:14px}
+.hiw-step{display:flex;gap:16px;align-items:flex-start;background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:20px 22px}
+.hiw-num{flex:0 0 34px;height:34px;border-radius:50%;background:var(--pitch);color:#f4f1ec;font-family:'Fraunces',serif;font-size:17px;display:flex;align-items:center;justify-content:center}
+.hiw-step h3{font-family:'Fraunces',serif;font-weight:400;font-size:19px;margin-bottom:4px}
+.hiw-step p{color:var(--muted);font-size:14.5px}
+
+.hiw-scoring{display:grid;grid-template-columns:repeat(2,1fr);gap:12px}
+.hiw-score{display:flex;align-items:center;gap:14px;background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:18px 20px}
+.hiw-score.afr{grid-column:1 / -1;border-color:var(--gold);background:linear-gradient(0deg,rgba(199,154,75,.07),rgba(199,154,75,.07)),var(--card)}
+.hiw-pts{font-family:'Fraunces',serif;font-size:30px;color:var(--pitch);min-width:46px;text-align:center}
+.hiw-score.afr .hiw-pts{color:var(--gold)}
+.hiw-lbl{color:var(--muted);font-size:14px;font-weight:500}
+
+.hiw-bank{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);overflow:hidden}
+.hiw-bank-row{display:flex;justify-content:space-between;align-items:center;gap:16px;padding:15px 22px;border-bottom:1px solid var(--line)}
+.hiw-bank-row:last-child{border-bottom:none}
+.hiw-bank-label{font-size:12px;letter-spacing:1px;text-transform:uppercase;color:var(--muted);font-weight:500}
+.hiw-bank-value{font-weight:500;text-align:right}
+@media (max-width:540px){.hiw-scoring{grid-template-columns:1fr}.hiw-score.afr{grid-column:auto}}
+
 /* ── Fixtures ──────────────────────────────────────────── */
 .fx-card{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);overflow:hidden}
 .fx-cardhead{display:flex;align-items:center;justify-content:space-between;padding:14px 18px;border-bottom:1px solid var(--line)}

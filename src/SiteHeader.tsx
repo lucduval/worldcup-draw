@@ -11,6 +11,7 @@ type NavItem = { to: string; label: string; soon?: boolean };
 
 const NAV: NavItem[] = [
   { to: "/games", label: "My games" },
+  { to: "/how-it-works", label: "How it works" },
   { to: "/standings", label: "Standings" },
   { to: "/fixtures", label: "Fixtures" },
   { to: "/results", label: "Results", soon: true },

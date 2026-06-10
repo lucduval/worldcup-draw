@@ -20,6 +20,7 @@ import { api } from "../convex/_generated/api";
 import AuthScreen from "./AuthScreen";
 import SiteHeader from "./SiteHeader";
 import MyAccount from "./MyAccount";
+import HowItWorks from "./HowItWorks";
 import Fixtures from "./FixturesView";
 
 // The room UI is the heavy part of the app. Loading it lazily keeps the
@@ -54,6 +55,7 @@ export default function App() {
             <Route path="/standings" element={<StandingsPage />} />
             <Route path="/fixtures" element={<FixturesPage />} />
             <Route path="/results" element={<ResultsPage />} />
+            <Route path="/how-it-works" element={<HowItWorks />} />
             <Route path="/account" element={<MyAccount />} />
             <Route path="*" element={<Navigate to="/games" replace />} />
           </Routes>
