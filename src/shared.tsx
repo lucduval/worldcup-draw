@@ -197,11 +197,18 @@ export function RevealOverlay({
   tier,
   flag,
   teamName,
+  spinMs = SPIN_MS,
+  verb = "drew",
 }: {
   ownerName: string;
   tier: number;
   flag: string;
   teamName: string;
+  // How long the reel spins before landing. The async "others" reveal is quick,
+  // so it passes a shorter spin than the live draw's default.
+  spinMs?: number;
+  // Past-tense verb shown once landed (e.g. "drew" / "got yours").
+  verb?: string;
 }) {
   const [face, setFace] = useState(0);
   const [landed, setLanded] = useState(false);
@@ -215,18 +222,18 @@ export function RevealOverlay({
     const stop = setTimeout(() => {
       clearInterval(spin);
       setLanded(true);
-    }, SPIN_MS);
+    }, spinMs);
     return () => {
       clearInterval(spin);
       clearTimeout(stop);
     };
-  }, [flag, teamName]);
+  }, [flag, teamName, spinMs]);
 
   return (
     <div className="overlay">
       <div className="drum">🥁 the draw 🥁</div>
       <div className="who">
-        <em>{ownerName}</em> {landed ? "drew" : "is drawing…"}
+        <em>{ownerName}</em> {landed ? verb : "is drawing…"}
       </div>
       <div className={`reel${landed ? " landed" : ""}`}>
         {landed ? flag : REEL[face]}

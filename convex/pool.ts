@@ -4,6 +4,14 @@
 // How long a tier draw stays on screen: the reel spins, lands on the drawn
 // flag, then holds on it so everyone sees who got what before the next turn.
 export const REVEAL_MS = 3200;
+
+// Async "watch anytime" replay timing (client-side only - the async draw has no
+// shared reveal clock). Other players' picks auto-reveal quickly; the watcher's
+// own reveal dwells noticeably longer than the live draw, since that's the
+// moment that actually matters.
+export const ASYNC_OTHERS_MS = 1100; // quick auto-reveal of other players' picks
+export const ASYNC_MINE_MS = 5000; // suspenseful dwell on the watcher's own reveal
+
 export const MAX_PLAYERS = 16; // one team per tier per player, 16 teams per tier
 export const ENTRY_FEE = 100; // R100 buy-in
 

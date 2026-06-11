@@ -5,6 +5,8 @@ import type { FunctionReturnType } from "convex/server";
 import { api } from "../convex/_generated/api";
 import {
   REVEAL_MS,
+  ASYNC_OTHERS_MS,
+  ASYNC_MINE_MS,
   ENTRY_FEE,
   MAX_PLAYERS,
   AFRICAN_POOL,
@@ -123,6 +125,7 @@ function GamesList({
   const deleteRoom = useMutation(api.rooms.deleteRoom);
   const [gameName, setGameName] = useState("");
   const [buyIn, setBuyIn] = useState(String(ENTRY_FEE));
+  const [mode, setMode] = useState<"live" | "async">("live");
   const [joinCode, setJoinCode] = useState("");
   const [err, setErr] = useState(notice || "");
   const [busy, setBusy] = useState(false);
@@ -135,7 +138,11 @@ function GamesList({
     setBusy(true);
     setErr("");
     try {
-      const { code } = await createRoom({ name: gameName.trim(), entryFee: fee });
+      const { code } = await createRoom({
+        name: gameName.trim(),
+        entryFee: fee,
+        mode,
+      });
       onEnter(code);
     } catch (e: any) {
       setErr(e.message ?? "Could not create the game.");
@@ -207,8 +214,12 @@ function GamesList({
                         <span className="gc-code">{g.code}</span>·{" "}
                         {g.playerCount} player{g.playerCount === 1 ? "" : "s"}
                         {g.isHost ? " · host" : ""}
+                        {g.mode === "async" ? " · watch anytime" : ""}
                       </span>
                     </div>
+                    {g.needsAction && (
+                      <span className="action-pill">Action needed</span>
+                    )}
                     <span className={`status-pill ${g.status}`}>
                       {STATUS_LABEL[g.status]}
                     </span>
@@ -256,6 +267,31 @@ function GamesList({
               placeholder={String(ENTRY_FEE)}
             />
           </div>
+          <div className="field">
+            <label>Draw style</label>
+            <div className="mode-toggle">
+              <button
+                type="button"
+                className={`mode-opt${mode === "live" ? " selected" : ""}`}
+                onClick={() => setMode("live")}
+              >
+                <span className="mode-title">🔴 Live draw</span>
+                <span className="mode-desc">
+                  Everyone’s together, tapping in real time.
+                </span>
+              </button>
+              <button
+                type="button"
+                className={`mode-opt${mode === "async" ? " selected" : ""}`}
+                onClick={() => setMode("async")}
+              >
+                <span className="mode-title">🍿 Watch anytime</span>
+                <span className="mode-desc">
+                  Run it once; each player watches the draw on their own time.
+                </span>
+              </button>
+            </div>
+          </div>
           <button className="btn big" disabled={busy} onClick={handleCreate}>
             Start a new draw →
           </button>
@@ -301,7 +337,7 @@ function Room({
   onBack: () => void;
   onExit: () => void;
 }) {
-  const { room, players, teams, current, viewerId } = data;
+  const { room, players, teams, current, viewerId, needsWatch, script } = data;
   const startGame = useMutation(api.rooms.startGame);
   const draw = useMutation(api.rooms.draw);
   const hostDraw = useMutation(api.rooms.hostDraw);
@@ -309,9 +345,12 @@ function Room({
   const pickAfrican = useMutation(api.rooms.pickAfrican);
   const resetRoom = useMutation(api.rooms.resetRoom);
   const deleteRoom = useMutation(api.rooms.deleteRoom);
+  const runAsyncDraw = useMutation(api.rooms.runAsyncDraw);
+  const forceLockAsync = useMutation(api.rooms.forceLockAsync);
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState(false);
 
+  const isAsync = room.mode === "async";
   const isHost = room.hostId === viewerId;
   const entryFee = room.entryFee ?? ENTRY_FEE;
   const pool = entryFee * players.length;
@@ -352,6 +391,42 @@ function Room({
       await startGame({ code: room.code });
     } catch (e: any) {
       setErr(e.message ?? "Could not start.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleRunAsync() {
+    if (
+      !confirm(
+        "Run the draw now? Teams are assigned instantly and everyone can then watch it play out in their own time.",
+      )
+    )
+      return;
+    setBusy(true);
+    setErr("");
+    try {
+      await runAsyncDraw({ code: room.code });
+    } catch (e: any) {
+      setErr(e.message ?? "Could not run the draw.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleForceLock() {
+    if (
+      !confirm(
+        "Lock the draw now? Anyone who never picked an African team gets a random one, and the draw is final.",
+      )
+    )
+      return;
+    setBusy(true);
+    setErr("");
+    try {
+      await forceLockAsync({ code: room.code });
+    } catch (e: any) {
+      setErr(e.message ?? "Could not lock the draw.");
     } finally {
       setBusy(false);
     }
@@ -482,22 +557,32 @@ function Room({
               ))}
             </div>
 
+            {isAsync && (
+              <p className="hint" style={{ marginBottom: 8 }}>
+                🍿 Watch-anytime draw: once you run it, every player watches the
+                draw play out whenever they next open the app.
+              </p>
+            )}
             {isHost ? (
               <button
                 className="btn big"
                 disabled={busy || players.length < 2}
-                onClick={handleStart}
+                onClick={isAsync ? handleRunAsync : handleStart}
               >
                 {players.length < 2
                   ? "Waiting for more players…"
-                  : "Lock it in & start the draw →"}
+                  : isAsync
+                    ? "Run the draw now →"
+                    : "Lock it in & start the draw →"}
               </button>
             ) : (
               <button className="btn big" disabled>
-                Waiting for the host to start…
+                {isAsync
+                  ? "Waiting for the host to run the draw…"
+                  : "Waiting for the host to start…"}
               </button>
             )}
-            {isHost && players.length >= 2 && (
+            {isHost && !isAsync && players.length >= 2 && (
               <button
                 className="leave"
                 onClick={handleAutoAllocate}
@@ -536,6 +621,37 @@ function Room({
           )}
         </div>
         <Fixtures />
+        <button className="leave" onClick={onBack}>
+          ← My games
+        </button>
+        <button className="leave" onClick={onExit}>
+          ← Back to menu
+        </button>
+      </>
+    );
+  }
+
+  // ── Async replay: this player hasn't watched their walk-through yet ─────
+  // The board/standings/their teams stay hidden until they've played through
+  // their own reveal (server withholds owners + sends a playback script).
+  if (needsWatch && script) {
+    return (
+      <>
+        <Header
+          pool={pool}
+          entryFee={entryFee}
+          count={players.length}
+          teamsEach={TEAMS_EACH}
+        />
+        <div className="wrap">
+          <div className="game-title">{room.name}</div>
+        </div>
+        <ReplayPlayer
+          code={room.code}
+          script={script}
+          players={players}
+          viewerId={viewerId}
+        />
         <button className="leave" onClick={onBack}>
           ← My games
         </button>
@@ -650,7 +766,27 @@ function Room({
             )}
           </div>
 
-          {isHost && (
+          {isHost && isAsync && (
+            <div style={{ textAlign: "center", marginTop: 8 }}>
+              {pendingAfrican.length > 0 && (
+                <p className="hint" style={{ marginBottom: 4 }}>
+                  {pendingAfrican.length} player
+                  {pendingAfrican.length === 1 ? " still owes" : "s still owe"} an
+                  African pick.
+                </p>
+              )}
+              <button
+                className="leave danger"
+                onClick={handleForceLock}
+                disabled={busy}
+                style={{ textDecoration: "underline" }}
+              >
+                Host: force-lock now (random for no-shows) →
+              </button>
+            </div>
+          )}
+
+          {isHost && !isAsync && (
             <button
               className="leave"
               onClick={handleAutoAllocate}
@@ -1027,5 +1163,140 @@ function PlayerCard({
         })}
       </div>
     </div>
+  );
+}
+
+// ── Async replay player ──────────────────────────────────
+// Drives a local playback cursor over the script returned by getRoom. Other
+// players' picks auto-reveal quickly; the watcher's own turn pauses for a tap
+// and dwells longer. On reaching the end it calls markWatched, which clears the
+// server-side spoiler gate so the parent re-renders the real board.
+type ScriptStep = NonNullable<RoomData["script"]>[number];
+
+function ReplayPlayer({
+  code,
+  script,
+  players,
+  viewerId,
+}: {
+  code: string;
+  script: ScriptStep[];
+  players: RoomData["players"];
+  viewerId: RoomData["viewerId"];
+}) {
+  const markWatched = useMutation(api.rooms.markWatched);
+  const myPlayerId = players.find((p) => p.userId === viewerId)?._id;
+  const nameOf = useMemo(() => {
+    const m: Record<string, string> = {};
+    for (const p of players) m[p._id] = p.name;
+    return m;
+  }, [players]);
+
+  const [cursor, setCursor] = useState(0);
+  // Whether the watcher has tapped to start their own (paused) reveal.
+  const [tapped, setTapped] = useState(false);
+
+  const finished = cursor >= script.length;
+  const step = finished ? null : script[cursor];
+  const mine = !!step && step.playerId === myPlayerId;
+
+  useEffect(() => {
+    if (finished) {
+      void markWatched({ code });
+      return;
+    }
+    // The watcher's own turn waits for a tap before it reveals.
+    if (mine && !tapped) return;
+    const dwell = mine ? ASYNC_MINE_MS : ASYNC_OTHERS_MS;
+    const t = setTimeout(() => {
+      setTapped(false);
+      setCursor((c) => c + 1);
+    }, dwell);
+    return () => clearTimeout(t);
+  }, [cursor, mine, tapped, finished, code, markWatched]);
+
+  // Picks already played through, newest first, as a running feed.
+  const revealed = script.slice(0, cursor);
+
+  const showOverlay = !finished && (!mine || tapped);
+
+  return (
+    <>
+      {showOverlay && step && (
+        <RevealOverlay
+          key={step.pickIndex}
+          ownerName={mine ? "You" : (nameOf[step.playerId] ?? "Someone")}
+          tier={step.tier}
+          flag={step.flag}
+          teamName={step.teamName}
+          spinMs={mine ? undefined : 600}
+          verb={mine ? "got" : "drew"}
+        />
+      )}
+
+      <div className="wrap">
+        <div className="replay-head">
+          <div className="turn-label">🍿 Watch your draw</div>
+          <div className="turn-name">
+            {finished
+              ? "That’s your squad!"
+              : `Pick ${cursor + 1} of ${script.length}`}
+          </div>
+        </div>
+
+        {finished ? (
+          <div className="banner">
+            <h3>All done ✓</h3>
+            <p>Loading your squad and the full board…</p>
+          </div>
+        ) : mine && !tapped ? (
+          <div className="replay-myturn">
+            <div className="replay-myturn-label">It’s your turn</div>
+            <p className="hint">
+              Tap the dice to draw your{" "}
+              {TIER_NAME[step!.tier].toLowerCase()} team.
+            </p>
+            <button className="btn big" onClick={() => setTapped(true)}>
+              🎲 Tap to draw
+            </button>
+          </div>
+        ) : (
+          <div className="replay-waiting">
+            <span className="turn-label">
+              {mine ? "🥁 revealing yours…" : "🥁 revealing…"}
+            </span>
+          </div>
+        )}
+
+        {revealed.length > 0 && (
+          <div className="replay-feed">
+            {revealed
+              .slice()
+              .reverse()
+              .map((s) => {
+                const isMine = s.playerId === myPlayerId;
+                return (
+                  <div
+                    className={`replay-row${isMine ? " me" : ""}`}
+                    key={s.pickIndex}
+                  >
+                    <span className="flag">{s.flag}</span>
+                    <span className="replay-team">{s.teamName}</span>
+                    <span className="replay-owner">
+                      {isMine ? "You" : (nameOf[s.playerId] ?? "—")}
+                    </span>
+                    <span
+                      className="tag"
+                      style={{ background: TIER_VAR[s.tier] }}
+                    >
+                      T{s.tier}
+                    </span>
+                  </div>
+                );
+              })}
+          </div>
+        )}
+      </div>
+    </>
   );
 }

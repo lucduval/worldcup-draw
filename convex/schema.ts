@@ -32,6 +32,11 @@ export default defineSchema({
       v.literal("done"),
     ),
     hostId: v.id("users"), // the account that created the game
+    // Draw style. "live" = everyone present, tapping in real time (the original
+    // flow). "async" = result computed once via runAsyncDraw, then each player
+    // watches it play out on their own schedule. Optional so rooms created
+    // before this field default to "live".
+    mode: v.optional(v.union(v.literal("live"), v.literal("async"))),
     // Per-draw buy-in (Rand) chosen by the host. Optional so rooms created
     // before this field fall back to the ENTRY_FEE default.
     entryFee: v.optional(v.number()),
@@ -49,6 +54,10 @@ export default defineSchema({
     africanTeam: v.optional(
       v.object({ name: v.string(), flag: v.string() }),
     ),
+    // Async mode only: wall-clock ms when this player finished watching their
+    // walk-through. Drives per-player spoiler gating and the "hasn't watched
+    // yet" reminder. `undefined` = hasn't watched (or live mode).
+    watchedAt: v.optional(v.number()),
   })
     .index("by_room", ["roomId"])
     .index("by_user", ["userId"]), // powers each account's "My games" list

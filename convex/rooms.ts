@@ -96,8 +96,16 @@ function allAfricanPicked(players: Doc<"players">[]): boolean {
 }
 
 // A random African nation, used when a turn is auto-resolved rather than chosen.
-function randomAfrican(): { name: string; flag: string } {
-  const c = AFRICAN_POOL[Math.floor(Math.random() * AFRICAN_POOL.length)];
+// Avoids any nation in `exclude` (e.g. teams the player already drew from a
+// tier) where possible, falling back to the full pool only if that would leave
+// nothing - so a forced pick never duplicates a player's own drawn team.
+function randomAfrican(exclude?: Set<string>): { name: string; flag: string } {
+  const eligible =
+    exclude && exclude.size > 0
+      ? AFRICAN_POOL.filter((t) => !exclude.has(t.name))
+      : AFRICAN_POOL;
+  const pool = eligible.length > 0 ? eligible : AFRICAN_POOL;
+  const c = pool[Math.floor(Math.random() * pool.length)];
   return { name: c.name, flag: c.flag };
 }
 
@@ -109,6 +117,29 @@ function whoseTurn(turnOrder: Id<"players">[], pickIndex: number) {
   const pos = pickIndex % n;
   const idx = round % 2 === 0 ? pos : n - 1 - pos;
   return { playerId: turnOrder[idx], tier: round + 1, round };
+}
+
+// Reconstruct the async draw as an ordered playback script the client animates:
+// one entry per tier pick, in real pick order. Each player owns exactly one team
+// per tier, so whoseTurn + ownerId/tier uniquely identifies what they drew. The
+// watcher's own teams ride along here and are only surfaced as they tap.
+function buildScript(turnOrder: Id<"players">[], teams: Doc<"teams">[]) {
+  const total = totalPicks(turnOrder.length);
+  const script = [];
+  for (let i = 0; i < total; i++) {
+    const { playerId, tier } = whoseTurn(turnOrder, i);
+    const team = teams.find((t) => t.ownerId === playerId && t.tier === tier);
+    if (!team) continue;
+    script.push({
+      pickIndex: i,
+      playerId,
+      tier,
+      teamId: team._id,
+      teamName: team.name,
+      flag: team.flag,
+    });
+  }
+  return script;
 }
 
 // Identity is always derived server-side from the signed-in session - never
@@ -147,13 +178,22 @@ export const myGames = query({
         .query("players")
         .withIndex("by_room", (q) => q.eq("roomId", room._id))
         .collect();
+      // Async "action needed" reminder: this player still owes an African pick
+      // (only possible while the draw is open) or hasn't watched their replay.
+      const mode = room.mode === "async" ? "async" : "live";
+      const needsAfrican =
+        mode === "async" && room.status === "drawing" && !seat.africanTeam;
+      const needsWatch =
+        mode === "async" && room.status !== "lobby" && !seat.watchedAt;
       games.push({
         code: room.code,
         name: room.name,
         status: room.status,
+        mode,
         playerCount: players.length,
         isHost: room.hostId === userId,
         joinedAt: seat.joinedAt,
+        needsAction: needsAfrican || needsWatch,
       });
     }
     games.sort((a, b) => b.joinedAt - a.joinedAt);
@@ -210,20 +250,41 @@ export const getRoom = query({
       avatarUrl: avatars[p.userId] ?? null,
     }));
 
+    // Async spoiler gating: once the draw has run, a player who hasn't watched
+    // their walk-through yet gets the result only as a playback script (which
+    // their replay client animates), and the static board is stripped of owners
+    // so it can't be peeked. Everyone else (live mode, or already-watched) sees
+    // the board as normal. The script always carries the watcher's own teams -
+    // they're revealed in the UI only as they tap - which is the pragmatic
+    // trade-off for a casual friends' game.
+    const isAsync = room.mode === "async";
+    const needsWatch =
+      isAsync && room.status !== "lobby" && !!me && !me.watchedAt;
+    const script = needsWatch ? buildScript(room.turnOrder, teams) : null;
+    const outTeams = needsWatch
+      ? teams.map((t) => ({ ...t, ownerId: undefined, assignedAt: undefined }))
+      : teams;
+
     return {
       room,
       players: playersWithAvatars,
-      teams,
+      teams: outTeams,
       current,
       viewerId: userId,
       isMember: !!me,
+      needsWatch,
+      script,
     };
   },
 });
 
 export const createRoom = mutation({
-  args: { name: v.string(), entryFee: v.optional(v.number()) },
-  handler: async (ctx, { name, entryFee }) => {
+  args: {
+    name: v.string(),
+    entryFee: v.optional(v.number()),
+    mode: v.optional(v.union(v.literal("live"), v.literal("async"))),
+  },
+  handler: async (ctx, { name, entryFee, mode }) => {
     const userId = await requireUser(ctx);
 
     // Clamp the buy-in to a sane whole-Rand amount; fall back to the default.
@@ -251,6 +312,7 @@ export const createRoom = mutation({
       code,
       status: "lobby",
       hostId: userId,
+      mode: mode === "async" ? "async" : "live",
       entryFee: fee,
       turnOrder: [],
       pickIndex: 0,
@@ -322,6 +384,8 @@ export const startGame = mutation({
     if (!room) throw new Error("Room not found.");
     if (room.hostId !== userId)
       throw new Error("Only the host can start the game.");
+    if (room.mode === "async")
+      throw new Error("This is a watch-anytime draw - use “Run the draw now”.");
     if (room.status !== "lobby") throw new Error("Game already started.");
 
     const players = await ctx.db
@@ -359,6 +423,8 @@ export const draw = mutation({
       .withIndex("by_code", (q) => q.eq("code", code))
       .unique();
     if (!room) throw new Error("Room not found.");
+    if (room.mode === "async")
+      throw new Error("This is a watch-anytime draw - just watch your replay.");
     if (room.status !== "drawing") throw new Error("The draw is not running.");
 
     const total = totalPicks(room.turnOrder.length);
@@ -471,6 +537,8 @@ export const hostDraw = mutation({
     if (!room) throw new Error("Room not found.");
     if (room.hostId !== userId)
       throw new Error("Only the host can draw for a player.");
+    if (room.mode === "async")
+      throw new Error("This is a watch-anytime draw - no live turns to draw.");
     if (room.status !== "drawing") throw new Error("The draw is not running.");
 
     const total = totalPicks(room.turnOrder.length);
@@ -532,6 +600,8 @@ export const autoAllocate = mutation({
     if (!room) throw new Error("Room not found.");
     if (room.hostId !== userId)
       throw new Error("Only the host can auto-allocate.");
+    if (room.mode === "async")
+      throw new Error("This is a watch-anytime draw - use “Force-lock” instead.");
     if (room.status === "done") throw new Error("The draw is already complete.");
 
     const players = await ctx.db
@@ -585,6 +655,140 @@ export const autoAllocate = mutation({
       turnOrder,
       pickIndex: total,
     });
+  },
+});
+
+// ── Async "watch anytime" draw ───────────────────────────────────────────
+// Compute the whole tier draw server-side in one shot (host only), then let
+// each player watch it play out on their own schedule (see the replay client).
+// Like startGame + the tier half of autoAllocate, but it does NOT touch African
+// picks and assigns no reveal clock (assignedAt stays unset - per-viewer reveal
+// timing is purely client-side). The room only locks once every African pick is
+// in (via pickAfrican) or the host force-locks the stragglers.
+export const runAsyncDraw = mutation({
+  args: { code: v.string() },
+  handler: async (ctx, { code }) => {
+    const userId = await requireUser(ctx);
+    const room = await ctx.db
+      .query("rooms")
+      .withIndex("by_code", (q) => q.eq("code", code))
+      .unique();
+    if (!room) throw new Error("Room not found.");
+    if (room.hostId !== userId)
+      throw new Error("Only the host can run the draw.");
+    if (room.mode !== "async")
+      throw new Error("This isn't a watch-anytime draw.");
+    if (room.status !== "lobby")
+      throw new Error("The draw has already been run.");
+
+    const players = await ctx.db
+      .query("players")
+      .withIndex("by_room", (q) => q.eq("roomId", room._id))
+      .collect();
+    if (players.length < 2)
+      throw new Error("Need at least 2 players to run the draw.");
+    players.sort((a, b) => a.joinedAt - b.joinedAt);
+
+    const turnOrder = shuffle(players.map((p) => p._id));
+
+    // Trim & re-seed the field to this player count, exactly like startGame.
+    const teams = await ctx.db
+      .query("teams")
+      .withIndex("by_room", (q) => q.eq("roomId", room._id))
+      .collect();
+    await retierForDraw(ctx, teams, players.length);
+
+    // Resolve every tier pick now, excluding each player's own African team if
+    // they already chose one (else the picker handles collisions later). Owners
+    // are set, but assignedAt is left unset - there's no global reveal clock in
+    // async mode; the replay client times each reveal per viewer.
+    const africanName = new Map<Id<"players">, string | undefined>();
+    for (const p of players) africanName.set(p._id, p.africanTeam?.name);
+
+    const total = totalPicks(turnOrder.length);
+    for (let i = 0; i < total; i++) {
+      const { playerId, tier } = whoseTurn(turnOrder, i);
+      const pick = pickTierTeam(teams, tier, africanName.get(playerId));
+      if (pick) {
+        await ctx.db.patch(pick._id, { ownerId: playerId });
+        pick.ownerId = playerId; // mark taken for the rest of this pass
+      }
+    }
+
+    // The tier draw is fully resolved (pickIndex = total); playback is now a
+    // client concern. Lock straight to "done" only if every African pick is
+    // already in - otherwise stay "drawing" until the last pick lands.
+    const done = allAfricanPicked(players);
+    await ctx.db.patch(room._id, {
+      status: done ? "done" : "drawing",
+      turnOrder,
+      pickIndex: total,
+    });
+  },
+});
+
+// Called by the replay client when a player finishes watching their walk-
+// through. Idempotent - only stamps watchedAt the first time. Clears that
+// player's spoiler gate and their "hasn't watched yet" reminder.
+export const markWatched = mutation({
+  args: { code: v.string() },
+  handler: async (ctx, { code }) => {
+    const userId = await requireUser(ctx);
+    const room = await ctx.db
+      .query("rooms")
+      .withIndex("by_code", (q) => q.eq("code", code))
+      .unique();
+    if (!room) throw new Error("Room not found.");
+
+    const players = await ctx.db
+      .query("players")
+      .withIndex("by_room", (q) => q.eq("roomId", room._id))
+      .collect();
+    const me = players.find((p) => p.userId === userId);
+    if (!me) throw new Error("You're not in this game.");
+
+    if (!me.watchedAt) await ctx.db.patch(me._id, { watchedAt: Date.now() });
+  },
+});
+
+// Async-mode "stop waiting": the host assigns a random African nation to anyone
+// who never chose one (avoiding their own drawn teams) and locks the draw. The
+// tier picks are already assigned by runAsyncDraw, so this only fills missing
+// African picks and flips the room to "done".
+export const forceLockAsync = mutation({
+  args: { code: v.string() },
+  handler: async (ctx, { code }) => {
+    const userId = await requireUser(ctx);
+    const room = await ctx.db
+      .query("rooms")
+      .withIndex("by_code", (q) => q.eq("code", code))
+      .unique();
+    if (!room) throw new Error("Room not found.");
+    if (room.hostId !== userId)
+      throw new Error("Only the host can lock the draw.");
+    if (room.mode !== "async")
+      throw new Error("This isn't a watch-anytime draw.");
+    if (room.status === "lobby") throw new Error("Run the draw first.");
+    if (room.status === "done") throw new Error("The draw is already locked.");
+
+    const players = await ctx.db
+      .query("players")
+      .withIndex("by_room", (q) => q.eq("roomId", room._id))
+      .collect();
+    const teams = await ctx.db
+      .query("teams")
+      .withIndex("by_room", (q) => q.eq("roomId", room._id))
+      .collect();
+
+    for (const p of players) {
+      if (p.africanTeam) continue;
+      const drawn = new Set(
+        teams.filter((t) => t.ownerId === p._id).map((t) => t.name),
+      );
+      await ctx.db.patch(p._id, { africanTeam: randomAfrican(drawn) });
+    }
+
+    await ctx.db.patch(room._id, { status: "done" });
   },
 });
 
@@ -644,7 +848,11 @@ export const resetRoom = mutation({
       .withIndex("by_room", (q) => q.eq("roomId", room._id))
       .collect();
     for (const p of roomPlayers) {
-      if (p.africanTeam) await ctx.db.patch(p._id, { africanTeam: undefined });
+      if (p.africanTeam || p.watchedAt)
+        await ctx.db.patch(p._id, {
+          africanTeam: undefined,
+          watchedAt: undefined,
+        });
     }
     await ctx.db.patch(room._id, {
       status: "lobby",

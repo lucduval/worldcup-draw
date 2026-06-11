@@ -589,3 +589,37 @@ footer{text-align:center;color:var(--ink);font-weight:400;font-size:12px;padding
 .account-pic{display:flex;align-items:center;gap:18px;margin-bottom:22px}
 
 .ok{color:var(--pitch);font-size:13px;margin-top:10px;min-height:18px;font-weight:500}
+
+/* ── Async "watch anytime" draw ─────────────────────────── */
+/* Create-form mode toggle */
+.mode-toggle{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.mode-opt{display:flex;flex-direction:column;gap:4px;text-align:left;padding:12px 13px;
+  background:#faf8f3;border:1px solid var(--line);border-radius:12px;cursor:pointer;
+  font-family:inherit;color:var(--ink);transition:border-color .12s ease,transform .12s ease}
+.mode-opt:hover{transform:scale(1.01);border-color:var(--gold)}
+.mode-opt.selected{border-color:var(--accent);background:#fff;box-shadow:0 0 0 1px var(--accent) inset}
+.mode-opt .mode-title{font-weight:600;font-size:14px}
+.mode-opt .mode-desc{font-size:12px;color:var(--muted);line-height:1.35}
+@media (max-width:520px){.mode-toggle{grid-template-columns:1fr}}
+
+/* "Action needed" badge on a game card */
+.action-pill{font-size:10px;letter-spacing:1px;text-transform:uppercase;padding:3px 9px;
+  border-radius:999px;white-space:nowrap;background:var(--accent);color:#fff;font-weight:600}
+
+/* Replay player */
+.replay-head{text-align:center;margin-bottom:14px}
+.replay-head .turn-label{font-size:13px;color:var(--muted)}
+.replay-head .turn-name{font-family:'Fraunces',serif;font-size:22px;font-weight:400;margin-top:2px}
+.replay-myturn{background:var(--card);border:1px solid var(--line);border-radius:16px;
+  padding:24px 18px;text-align:center;box-shadow:0 10px 30px -22px rgba(0,0,0,.3)}
+.replay-myturn-label{font-family:'Fraunces',serif;font-size:24px;color:var(--accent);margin-bottom:6px}
+.replay-myturn .btn{width:auto;margin-top:10px}
+.replay-waiting{text-align:center;padding:18px 0}
+.replay-feed{display:flex;flex-direction:column;gap:8px;margin-top:18px}
+.replay-row{display:flex;align-items:center;gap:10px;background:var(--card);
+  border:1px solid var(--line);border-radius:11px;padding:10px 13px;font-size:14px}
+.replay-row.me{border-color:var(--accent);background:#fff;box-shadow:0 0 0 1px var(--accent) inset}
+.replay-row .flag{font-size:20px;line-height:1}
+.replay-row .replay-team{font-weight:500}
+.replay-row .replay-owner{margin-left:auto;color:var(--muted);font-size:13px}
+.replay-row .tag{font-size:11px;color:#fff;padding:2px 7px;border-radius:6px}
