@@ -347,6 +347,7 @@ function Room({
   const deleteRoom = useMutation(api.rooms.deleteRoom);
   const runAsyncDraw = useMutation(api.rooms.runAsyncDraw);
   const forceLockAsync = useMutation(api.rooms.forceLockAsync);
+  const setMode = useMutation(api.rooms.setMode);
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState(false);
 
@@ -393,6 +394,16 @@ function Room({
       setErr(e.message ?? "Could not start.");
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function handleSetMode(next: "live" | "async") {
+    if (next === room.mode) return;
+    setErr("");
+    try {
+      await setMode({ code: room.code, mode: next });
+    } catch (e: any) {
+      setErr(e.message ?? "Could not change the draw style.");
     }
   }
 
@@ -557,6 +568,41 @@ function Room({
               ))}
             </div>
 
+            {isHost ? (
+              <div className="field" style={{ marginTop: 4 }}>
+                <label>Draw style</label>
+                <div className="mode-toggle">
+                  <button
+                    type="button"
+                    className={`mode-opt${!isAsync ? " selected" : ""}`}
+                    disabled={busy}
+                    onClick={() => handleSetMode("live")}
+                  >
+                    <span className="mode-title">🔴 Live draw</span>
+                    <span className="mode-desc">
+                      Everyone’s together, tapping in real time.
+                    </span>
+                  </button>
+                  <button
+                    type="button"
+                    className={`mode-opt${isAsync ? " selected" : ""}`}
+                    disabled={busy}
+                    onClick={() => handleSetMode("async")}
+                  >
+                    <span className="mode-title">🍿 Watch anytime</span>
+                    <span className="mode-desc">
+                      Run it once; each player watches on their own time.
+                    </span>
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <p className="hint" style={{ marginBottom: 8 }}>
+                {isAsync
+                  ? "🍿 Watch-anytime draw - you’ll watch it play out on your own time."
+                  : "🔴 Live draw - everyone draws together in real time."}
+              </p>
+            )}
             {isAsync && (
               <p className="hint" style={{ marginBottom: 8 }}>
                 🍿 Watch-anytime draw: once you run it, every player watches the

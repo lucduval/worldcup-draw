@@ -338,6 +338,28 @@ export const createRoom = mutation({
   },
 });
 
+// The host can switch a room between live and watch-anytime while it's still in
+// the lobby - the call to make once everyone's gathered, before the draw runs.
+export const setMode = mutation({
+  args: {
+    code: v.string(),
+    mode: v.union(v.literal("live"), v.literal("async")),
+  },
+  handler: async (ctx, { code, mode }) => {
+    const userId = await requireUser(ctx);
+    const room = await ctx.db
+      .query("rooms")
+      .withIndex("by_code", (q) => q.eq("code", code))
+      .unique();
+    if (!room) throw new Error("Room not found.");
+    if (room.hostId !== userId)
+      throw new Error("Only the host can change the draw style.");
+    if (room.status !== "lobby")
+      throw new Error("The draw has already started.");
+    if ((room.mode ?? "live") !== mode) await ctx.db.patch(room._id, { mode });
+  },
+});
+
 export const joinRoom = mutation({
   args: { code: v.string() },
   handler: async (ctx, { code }) => {
