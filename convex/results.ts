@@ -1,7 +1,10 @@
 import { query, internalMutation, internalAction } from "./_generated/server";
 import { v } from "convex/values";
+import { Id, Doc } from "./_generated/dataModel";
 import { internal } from "./_generated/api";
+import { getAuthUserId } from "@convex-dev/auth/server";
 import { POOL } from "./pool";
+import { computeBankroll } from "./betting";
 import { avatarUrls } from "./account";
 
 // ── Team-name mapping ────────────────────────────────────
@@ -330,6 +333,10 @@ export const standings = query({
       .unique();
     if (!room) return null;
 
+    // Identify the viewer so each player's private betting posture (pending
+    // stakes / settled P&L) is only ever returned on their own row.
+    const viewerId = await getAuthUserId(ctx);
+
     const players = await ctx.db
       .query("players")
       .withIndex("by_room", (q) => q.eq("roomId", room._id))
@@ -343,6 +350,25 @@ export const standings = query({
       ctx,
       players.map((p) => p.userId),
     );
+
+    // Betting layer: when a starting pot is set, each player's bankroll is
+    // derived from their bets + the matches table and folds into their total.
+    // Pot 0 (or undefined) ⇒ no bankroll, behaviour identical to before.
+    const startingPot = room.startingPot ?? 0;
+    const bettingOn = startingPot > 0;
+    const matchByExtId = new Map(matches.map((m) => [m.extId, m]));
+    const betsByPlayer = new Map<Id<"players">, Doc<"bets">[]>();
+    if (bettingOn) {
+      const bets = await ctx.db
+        .query("bets")
+        .withIndex("by_room", (q) => q.eq("roomId", room._id))
+        .collect();
+      for (const b of bets) {
+        const list = betsByPlayer.get(b.playerId);
+        if (list) list.push(b);
+        else betsByPlayer.set(b.playerId, [b]);
+      }
+    }
 
     const rows = players.map((p) => {
       const owned = teams
@@ -365,8 +391,25 @@ export const standings = query({
           }
         : null;
 
-      const total =
+      const drawTotal =
         owned.reduce((s, t) => s + t.points, 0) + (african?.points ?? 0);
+
+      // Fold the player's bankroll into the score. computeBankroll already
+      // floors at 0, so a cold betting run never drags a player below their pure
+      // draw score.
+      const bank = bettingOn
+        ? computeBankroll(
+            startingPot,
+            betsByPlayer.get(p._id) ?? [],
+            matchByExtId,
+          )
+        : null;
+      const bankroll = bank?.bankroll ?? 0;
+      const total = drawTotal + bankroll;
+      // `bankroll`/`total` are public (the combined leaderboard), but a player's
+      // pending stakes and settled P&L reveal their betting posture, so only
+      // surface them on the viewer's own row - preserving the private-read edge.
+      const isMe = viewerId != null && p.userId === viewerId;
 
       return {
         playerId: p._id,
@@ -374,6 +417,11 @@ export const standings = query({
         name: p.name,
         avatarUrl: avatars[p.userId] ?? null,
         total,
+        drawTotal,
+        bettingOn,
+        bankroll,
+        pendingStakes: isMe ? (bank?.pendingStakes ?? 0) : 0,
+        settledNet: isMe ? (bank?.settledNet ?? 0) : 0,
         teams: owned,
         african,
       };

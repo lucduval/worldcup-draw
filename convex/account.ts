@@ -33,7 +33,23 @@ export const me = query({
       name: (user.name ?? "").trim() || "Player",
       email: user.email ?? null,
       imageUrl: user.imageId ? await ctx.storage.getUrl(user.imageId) : null,
+      // `undefined` (existing accounts) reads as not-yet-seen so the one-time
+      // walkthrough still shows them the guide once.
+      seenIntro: user.seenIntro ?? false,
     };
+  },
+});
+
+// Mark the first-login walkthrough as seen for the signed-in account, so it
+// never auto-opens again. Idempotent - safe to call when already seen (e.g.
+// when an invited player is routed straight into a room).
+export const markIntroSeen = mutation({
+  args: {},
+  handler: async (ctx) => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) return null; // not signed in yet - nothing to mark
+    await ctx.db.patch(userId, { seenIntro: true });
+    return null;
   },
 });
 

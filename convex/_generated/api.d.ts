@@ -10,6 +10,7 @@
 
 import type * as account from "../account.js";
 import type * as auth from "../auth.js";
+import type * as betting from "../betting.js";
 import type * as crons from "../crons.js";
 import type * as http from "../http.js";
 import type * as pool from "../pool.js";
@@ -25,6 +26,7 @@ import type {
 declare const fullApi: ApiFromModules<{
   account: typeof account;
   auth: typeof auth;
+  betting: typeof betting;
   crons: typeof crons;
   http: typeof http;
   pool: typeof pool;

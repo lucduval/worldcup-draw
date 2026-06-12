@@ -13,6 +13,11 @@ import {
   POOL,
   RANK_BY_NAME,
   TIERS,
+  TIMER_PRESETS,
+  DEFAULT_TIMER_SECONDS,
+  STARTING_POT_DEFAULT,
+  STARTING_POT_MAX,
+  type BetPick,
 } from "../convex/pool";
 import {
   Avatar,
@@ -27,6 +32,185 @@ import {
 // Each player tracks four teams: one African pick plus one per tier.
 const TEAMS_EACH = 4;
 import Fixtures from "./FixturesView";
+
+// Human label for a timer length, e.g. 30 → "30s", 60 → "1 min", 120 → "2 min".
+function fmtTimer(seconds: number): string {
+  if (seconds < 60) return `${seconds}s`;
+  const m = seconds / 60;
+  return `${m} min`;
+}
+
+// The live "what does this pot do?" label, derived from the bands in the PRD:
+// the pot is a starting stack each player is handed, so it reads as how much
+// betting can swing the room relative to the draw.
+function potImpact(pot: number): string {
+  if (pot <= 0) return "Betting off for this room.";
+  if (pot <= 15)
+    return "Nudge — the draw decides the room; betting just shuffles close places.";
+  if (pot <= 39)
+    return "Co-equal — a hot or cold betting run can overturn the draw.";
+  return "Dominant — betting outweighs the draw.";
+}
+
+// Host control for the per-player betting bankroll (0 = betting off). A slider +
+// number input over [0, STARTING_POT_MAX], with the live impact label beneath.
+// In the create form `onChange` just updates local state; in the lobby / a not-
+// yet-kicked-off done room it calls setPot.
+function PotControl({
+  value,
+  busy,
+  onChange,
+  note,
+}: {
+  value: number;
+  busy: boolean;
+  onChange: (pot: number) => void;
+  note?: string;
+}) {
+  // Drive the inputs from a local draft so dragging the slider is instant. We
+  // only call `onChange` (which may fire a setPot network mutation) when the
+  // interaction ends - on pointer release, blur, or Enter. Previously onChange
+  // fired on every tick, sending a Convex mutation per pixel of drag, which made
+  // the slider crawl.
+  const [draft, setDraft] = useState(value);
+  // Resync when the committed value changes from outside (a saved setPot, or
+  // another host). The parent `value` is stable during a drag (we don't commit
+  // until release), so this never fights the user mid-interaction.
+  useEffect(() => setDraft(value), [value]);
+
+  const commit = (v: number) => {
+    const next = Math.min(STARTING_POT_MAX, Math.max(0, Math.round(v || 0)));
+    setDraft(next);
+    if (next !== value) onChange(next);
+  };
+
+  return (
+    <div className="pot-control">
+      <div className="pot-row">
+        <span className="pot-value">
+          {draft === 0 ? "Off" : `${draft} pts`}
+        </span>
+        <input
+          type="range"
+          min={0}
+          max={STARTING_POT_MAX}
+          step={1}
+          value={draft}
+          disabled={busy}
+          onChange={(e) => setDraft(Number(e.target.value))}
+          onPointerUp={(e) => commit(Number(e.currentTarget.value))}
+          onKeyUp={(e) => commit(Number(e.currentTarget.value))}
+          aria-label="Starting betting pot"
+        />
+        <input
+          type="number"
+          className="pot-num"
+          min={0}
+          max={STARTING_POT_MAX}
+          step={1}
+          value={draft}
+          disabled={busy}
+          onChange={(e) => setDraft(Number(e.target.value))}
+          onBlur={(e) => commit(Number(e.target.value))}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") commit(Number(e.currentTarget.value));
+          }}
+        />
+      </div>
+      <p className="hint pot-impact">💰 {potImpact(draft)}</p>
+      {note && <p className="hint">{note}</p>}
+    </div>
+  );
+}
+
+// Host-only control to toggle the live turn timer and pick its length. Used in
+// the lobby and (compact) mid-draw. Only renders for the host; everyone else
+// reads the countdown itself off the turn bar.
+function TimerControl({
+  enabled,
+  seconds,
+  busy,
+  compact,
+  onChange,
+}: {
+  enabled: boolean;
+  seconds: number;
+  busy: boolean;
+  compact?: boolean;
+  onChange: (enabled: boolean, seconds: number) => void;
+}) {
+  return (
+    <div className={`timer-control${compact ? " compact" : ""}`}>
+      <div className="timer-toggle-row">
+        <span className="timer-ctl-label">⏱️ Turn timer</span>
+        <button
+          type="button"
+          role="switch"
+          aria-checked={enabled}
+          className={`timer-switch${enabled ? " on" : ""}`}
+          disabled={busy}
+          onClick={() => onChange(!enabled, seconds)}
+        >
+          <span className="knob" />
+          <span className="timer-switch-text">{enabled ? "On" : "Off"}</span>
+        </button>
+      </div>
+      {enabled && (
+        <div className="timer-presets">
+          {TIMER_PRESETS.map((s) => (
+            <button
+              key={s}
+              type="button"
+              className={`timer-preset${s === seconds ? " selected" : ""}`}
+              disabled={busy}
+              onClick={() => onChange(true, s)}
+            >
+              {fmtTimer(s)}
+            </button>
+          ))}
+        </div>
+      )}
+      {!compact && (
+        <p className="hint timer-hint">
+          {enabled
+            ? `Each player has ${fmtTimer(
+                seconds,
+              )} to draw. Run out of time and a team is drawn for you automatically.`
+            : "Off: players take as long as they like on their turn."}
+        </p>
+      )}
+    </div>
+  );
+}
+
+// The shared per-turn countdown everyone sees while the timer is running.
+// `remainingMs` / `totalMs` drive a thin draining bar; goes urgent in the last
+// stretch. `mine` highlights it when it's the viewer's own clock.
+function TurnCountdown({
+  remainingMs,
+  totalMs,
+  mine,
+}: {
+  remainingMs: number;
+  totalMs: number;
+  mine: boolean;
+}) {
+  const secs = Math.ceil(remainingMs / 1000);
+  const urgent = remainingMs <= 10_000;
+  const frac = totalMs > 0 ? Math.max(0, Math.min(1, remainingMs / totalMs)) : 0;
+  return (
+    <div
+      className={`turn-countdown${urgent ? " urgent" : ""}${mine ? " mine" : ""}`}
+      role="timer"
+      aria-label={`${secs} seconds left`}
+    >
+      <div className="tc-time">{secs}s</div>
+      <div className="tc-bar">
+        <span className="tc-fill" style={{ width: `${frac * 100}%` }} />
+      </div>
+    </div>
+  );
+}
 
 // Dustbin glyph for destructive actions (host: delete game).
 function TrashIcon() {
@@ -127,6 +311,7 @@ function GamesList({
   const [gameName, setGameName] = useState("");
   const [buyIn, setBuyIn] = useState(String(ENTRY_FEE));
   const [mode, setMode] = useState<"live" | "async">("live");
+  const [startingPot, setStartingPot] = useState(STARTING_POT_DEFAULT);
   const [joinCode, setJoinCode] = useState("");
   const [err, setErr] = useState(notice || "");
   const [busy, setBusy] = useState(false);
@@ -143,6 +328,7 @@ function GamesList({
         name: gameName.trim(),
         entryFee: fee,
         mode,
+        startingPot,
       });
       onEnter(code);
     } catch (e: any) {
@@ -293,6 +479,10 @@ function GamesList({
               </button>
             </div>
           </div>
+          <div className="field">
+            <label>Betting pot per player</label>
+            <PotControl value={startingPot} busy={busy} onChange={setStartingPot} />
+          </div>
           <button className="btn big" disabled={busy} onClick={handleCreate}>
             Start a new draw →
           </button>
@@ -349,13 +539,24 @@ function Room({
   const runAsyncDraw = useMutation(api.rooms.runAsyncDraw);
   const forceLockAsync = useMutation(api.rooms.forceLockAsync);
   const setMode = useMutation(api.rooms.setMode);
+  const setTimer = useMutation(api.rooms.setTimer);
+  const setPot = useMutation(api.rooms.setPot);
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState(false);
+  const [hostSettingsOpen, setHostSettingsOpen] = useState(false);
 
   const isAsync = room.mode === "async";
   const isHost = room.hostId === viewerId;
+  // Live turn-timer settings (host-toggled). Read here so both the lobby config
+  // and the in-draw countdown share them.
+  const timerEnabled = room.timerEnabled ?? false;
+  const timerSeconds = room.timerSeconds ?? DEFAULT_TIMER_SECONDS;
   const entryFee = room.entryFee ?? ENTRY_FEE;
   const pool = entryFee * players.length;
+  const startingPot = room.startingPot ?? 0;
+  // The pot locks server-side once the first bet is placed; mirror that here so
+  // the host's control disables itself instead of failing on submit.
+  const potLocked = useQuery(api.rooms.potLocked, { code: room.code }) === true;
   const me = players.find((p) => p.userId === viewerId);
   const myTeams = me
     ? [
@@ -415,6 +616,24 @@ function Room({
       await setMode({ code: room.code, mode: next });
     } catch (e: any) {
       setErr(e.message ?? "Could not change the draw style.");
+    }
+  }
+
+  async function handleSetTimer(enabled: boolean, seconds: number) {
+    setErr("");
+    try {
+      await setTimer({ code: room.code, enabled, seconds });
+    } catch (e: any) {
+      setErr(e.message ?? "Could not change the timer.");
+    }
+  }
+
+  async function handleSetPot(pot: number) {
+    setErr("");
+    try {
+      await setPot({ code: room.code, startingPot: pot });
+    } catch (e: any) {
+      setErr(e.message ?? "Could not change the betting pot.");
     }
   }
 
@@ -620,6 +839,38 @@ function Room({
                 draw play out whenever they next open the app.
               </p>
             )}
+            {!isAsync && isHost && (
+              <div className="field" style={{ marginTop: 4 }}>
+                <TimerControl
+                  enabled={timerEnabled}
+                  seconds={timerSeconds}
+                  busy={busy}
+                  onChange={handleSetTimer}
+                />
+              </div>
+            )}
+            {!isAsync && !isHost && timerEnabled && (
+              <p className="hint" style={{ marginBottom: 8 }}>
+                ⏱️ Turn timer on — {fmtTimer(timerSeconds)} per pick. If you run
+                out of time, a team is drawn for you.
+              </p>
+            )}
+            {isHost ? (
+              <div className="field" style={{ marginTop: 4 }}>
+                <label>💰 Betting pot per player</label>
+                <PotControl
+                  value={startingPot}
+                  busy={busy}
+                  onChange={handleSetPot}
+                  note="Each player is handed this many points to bet on real World Cup matches. Sit on it, grow it, or gamble it away - it folds into the room score, but never drags you below your draw total."
+                />
+              </div>
+            ) : startingPot > 0 ? (
+              <p className="hint" style={{ marginBottom: 8 }}>
+                💰 Betting on — you’ll get {startingPot} points to bet on World
+                Cup matches once the draw locks.
+              </p>
+            ) : null}
             {isHost ? (
               <button
                 className="btn big"
@@ -678,12 +929,7 @@ function Room({
           )}
         </div>
         <Fixtures />
-        <button className="leave" onClick={onBack}>
-          ← My games
-        </button>
-        <button className="leave" onClick={onExit}>
-          ← Back to menu
-        </button>
+        <BackNav onBack={onBack} onExit={onExit} />
       </>
     );
   }
@@ -709,12 +955,7 @@ function Room({
           players={players}
           viewerId={viewerId}
         />
-        <button className="leave" onClick={onBack}>
-          ← My games
-        </button>
-        <button className="leave" onClick={onExit}>
-          ← Back to menu
-        </button>
+        <BackNav onBack={onBack} onExit={onExit} />
       </>
     );
   }
@@ -729,6 +970,14 @@ function Room({
   // players to make their off-clock African bonus pick.
   const awaitingAfrican = !done && !current;
   const pendingAfrican = players.filter((p) => !p.africanTeam);
+
+  // The countdown is visible to everyone whenever a turn is on the clock; the
+  // server's `turnDeadline` is the source of truth, so all tabs tick down to
+  // the same instant.
+  const timerActive = timerEnabled && !!current && !!room.turnDeadline && !done;
+  const timerRemainingMs = timerActive
+    ? Math.max(0, room.turnDeadline! - now)
+    : 0;
 
   return (
     <>
@@ -782,6 +1031,13 @@ function Room({
                 >
                   {TIER_NAME[current!.tier]}
                 </span>
+                {timerActive && (
+                  <TurnCountdown
+                    remainingMs={timerRemainingMs}
+                    totalMs={timerSeconds * 1000}
+                    mine
+                  />
+                )}
                 <div className="spacer" />
                 <button
                   className="btn"
@@ -803,6 +1059,13 @@ function Room({
                 >
                   {TIER_NAME[current?.tier ?? 1]}
                 </span>
+                {timerActive && (
+                  <TurnCountdown
+                    remainingMs={timerRemainingMs}
+                    totalMs={timerSeconds * 1000}
+                    mine={false}
+                  />
+                )}
                 <div className="spacer" />
                 {isHost ? (
                   <button
@@ -840,6 +1103,18 @@ function Room({
               >
                 Host: force-lock now (random for no-shows) →
               </button>
+            </div>
+          )}
+
+          {isHost && !isAsync && (
+            <div className="timer-control-wrap">
+              <TimerControl
+                enabled={timerEnabled}
+                seconds={timerSeconds}
+                busy={busy}
+                compact
+                onChange={handleSetTimer}
+              />
             </div>
           )}
 
@@ -890,6 +1165,20 @@ function Room({
         </section>
       )}
 
+      {/* Host's entry point to game settings (betting pot, reset, delete) -
+          opens a modal so the controls don't float between sections. */}
+      {isHost && (
+        <div className="wrap host-settings-bar">
+          <button
+            type="button"
+            className="host-settings-btn"
+            onClick={() => setHostSettingsOpen(true)}
+          >
+            ⚙ Host settings
+          </button>
+        </div>
+      )}
+
       {/* Players board */}
       <CollapsibleSection
         id="squads"
@@ -913,7 +1202,12 @@ function Room({
       </CollapsibleSection>
 
       {/* Standings - live once the draw is locked and results roll in */}
-      {done && <Standings code={room.code} viewerId={viewerId} />}
+      {done && (
+        <Standings code={room.code} viewerId={viewerId} pot={startingPot} />
+      )}
+
+      {/* Betting - real-match wagers against each player's bankroll */}
+      {done && startingPot > 0 && <BettingSection code={room.code} />}
 
       {/* Tier pools */}
       <CollapsibleSection
@@ -993,31 +1287,148 @@ function Room({
 
       <Fixtures myTeams={myTeams} owners={teamOwners} />
 
-      {isHost && (
-        <div className="wrap" style={{ textAlign: "center" }}>
-          <button
-            className="leave"
-            onClick={handleReset}
-            style={{ textDecoration: "underline" }}
-          >
-            Host: reset draw
-          </button>
-          <button
-            className="leave danger"
-            onClick={handleDelete}
-            style={{ textDecoration: "underline" }}
-          >
-            Host: delete game
-          </button>
-        </div>
+      {isHost && hostSettingsOpen && (
+        <HostSettingsModal
+          done={done}
+          startingPot={startingPot}
+          busy={busy}
+          potLocked={potLocked}
+          err={err}
+          onSetPot={handleSetPot}
+          onReset={handleReset}
+          onDelete={handleDelete}
+          onClose={() => setHostSettingsOpen(false)}
+        />
       )}
-      <button className="leave" onClick={onBack}>
+      <BackNav onBack={onBack} onExit={onExit} />
+    </>
+  );
+}
+
+// ── Page nav ─────────────────────────────────────────────
+// The "back" links shown at the foot of every room view. Styled as white pill
+// buttons so they read as deliberate navigation and stay legible on the photo
+// background, matching the rest of the app's card aesthetic.
+function BackNav({
+  onBack,
+  onExit,
+}: {
+  onBack: () => void;
+  onExit: () => void;
+}) {
+  return (
+    <nav className="page-nav" aria-label="Leave game">
+      <button type="button" className="nav-btn" onClick={onBack}>
         ← My games
       </button>
-      <button className="leave" onClick={onExit}>
+      <button type="button" className="nav-btn" onClick={onExit}>
         ← Back to menu
       </button>
-    </>
+    </nav>
+  );
+}
+
+// ── Host settings modal ──────────────────────────────────
+// The host's control room: betting pot, reset, and delete, behind one button so
+// these controls don't float between the page's section cards. Betting can only
+// be configured once the draw is locked (the server refuses pot changes mid-draw
+// and bets can't be placed until then), so before lock it shows a disabled note.
+function HostSettingsModal({
+  done,
+  startingPot,
+  busy,
+  potLocked,
+  err,
+  onSetPot,
+  onReset,
+  onDelete,
+  onClose,
+}: {
+  done: boolean;
+  startingPot: number;
+  busy: boolean;
+  potLocked: boolean;
+  err: string;
+  onSetPot: (pot: number) => void;
+  onReset: () => void;
+  onDelete: () => void;
+  onClose: () => void;
+}) {
+  // Lock body scroll and wire Escape-to-close while the modal is open.
+  useEffect(() => {
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => {
+      document.body.style.overflow = prev;
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [onClose]);
+
+  return (
+    <div
+      className="host-modal-backdrop"
+      role="dialog"
+      aria-modal="true"
+      aria-label="Host settings"
+      onClick={onClose}
+    >
+      <div className="host-modal" onClick={(e) => e.stopPropagation()}>
+        <div className="host-modal-head">
+          <h3>⚙ Host settings</h3>
+          <button
+            type="button"
+            className="host-modal-close"
+            aria-label="Close"
+            onClick={onClose}
+          >
+            ✕
+          </button>
+        </div>
+
+        <div className="host-modal-block">
+          <label className="pot-host-label">💰 Betting pot per player</label>
+          {done ? (
+            <PotControl
+              value={startingPot}
+              busy={busy || potLocked}
+              onChange={onSetPot}
+              note={
+                potLocked
+                  ? "🔒 Locked — players have placed bets."
+                  : startingPot > 0
+                    ? "Editable until the first bet is placed, then locked."
+                    : "Turn betting on for this room — players can back the remaining fixtures."
+              }
+            />
+          ) : (
+            <p className="host-modal-note">
+              Betting opens once the draw is locked — you'll set the pot here
+              when the squads are final.
+            </p>
+          )}
+        </div>
+
+        <div className="host-modal-block">
+          <div className="host-modal-block-title">Danger zone</div>
+          <button type="button" className="btn ghost" onClick={onReset}>
+            Reset draw to lobby
+          </button>
+          <button
+            type="button"
+            className="btn ghost host-modal-danger"
+            onClick={onDelete}
+          >
+            Delete game
+          </button>
+        </div>
+
+        {err && <div className="err">{err}</div>}
+      </div>
+    </div>
   );
 }
 
@@ -1026,9 +1437,11 @@ function Room({
 function Standings({
   code,
   viewerId,
+  pot,
 }: {
   code: string;
   viewerId: RoomData["viewerId"];
+  pot: number;
 }) {
   const rows = useQuery(api.results.standings, { code });
   if (rows === undefined || rows === null) return null;
@@ -1036,12 +1449,17 @@ function Standings({
   const anyResults = rows.some(
     (r) => r.teams.some((t) => t.played > 0) || (r.african?.played ?? 0) > 0,
   );
+  const bettingOn = pot > 0;
 
   return (
     <CollapsibleSection
       id="standings"
       title="Standings"
-      subtitle="3 win · 1 draw · 0 loss · African team scores double"
+      subtitle={
+        bettingOn
+          ? "3 win · 1 draw · 0 loss · African ×2 · plus betting bankroll"
+          : "3 win · 1 draw · 0 loss · African team scores double"
+      }
     >
       {!anyResults && (
         <p className="hint" style={{ marginBottom: 14 }}>
@@ -1074,6 +1492,23 @@ function Standings({
                       {t.points}
                     </span>
                   ))}
+                  {bettingOn && r.bettingOn && (
+                    <span
+                      className="stand-team bank"
+                      title={
+                        isMe
+                          ? `Betting bankroll: ${r.bankroll}${r.pendingStakes > 0 ? ` (${r.pendingStakes} in play)` : ""}`
+                          : "Betting bankroll"
+                      }
+                    >
+                      💰 {r.bankroll}
+                      {isMe && r.pendingStakes > 0 && (
+                        <span className="bank-inplay">
+                          · {r.pendingStakes} in play
+                        </span>
+                      )}
+                    </span>
+                  )}
                 </div>
               </div>
               <span className="stand-pts">
@@ -1085,6 +1520,302 @@ function Standings({
         })}
       </div>
     </CollapsibleSection>
+  );
+}
+
+// ── Betting ──────────────────────────────────────────────
+// A dedicated section in the locked-room view: the viewer's bankroll header,
+// the bettable World Cup fixtures (priced per outcome), and their own open +
+// settled bets. Picks are private (the server only ever returns the viewer's
+// own); bankroll totals are public via Standings.
+type BettableMatch = FunctionReturnType<
+  typeof api.betting.bettableMatches
+>[number];
+type MyBet = FunctionReturnType<typeof api.betting.myBets>[number];
+
+const PICK_LABEL: Record<BetPick, string> = {
+  HOME: "Home",
+  DRAW: "Draw",
+  AWAY: "Away",
+};
+
+// Local calendar day for a fixture (e.g. "Sat, 14 Jun"), used to group the
+// bettable list by matchday so we can show just the soonest one by default.
+function fixtureDay(utcDate: string): string {
+  return new Date(utcDate).toLocaleDateString(undefined, {
+    weekday: "short",
+    day: "numeric",
+    month: "short",
+  });
+}
+
+function BettingSection({ code }: { code: string }) {
+  const bankroll = useQuery(api.betting.myBankroll, { code });
+  const matches = useQuery(api.betting.bettableMatches, { code });
+  const bets = useQuery(api.betting.myBets, { code });
+  const placeBet = useMutation(api.betting.placeBet);
+  const cancelBet = useMutation(api.betting.cancelBet);
+  const [err, setErr] = useState("");
+  // Fixtures are long-ranging, so default to just the soonest matchday and let
+  // the player expand to the full list.
+  const [showAll, setShowAll] = useState(false);
+
+  const available = bankroll?.available ?? 0;
+
+  // `matches` is server-sorted by utcDate, so the first entry's day is the next
+  // matchday; collapse to only that day unless the player asks for everything.
+  const nextDay = matches?.[0] ? fixtureDay(matches[0].utcDate) : null;
+  const shownMatches =
+    matches === undefined || showAll
+      ? matches
+      : matches.filter((m) => fixtureDay(m.utcDate) === nextDay);
+  const hiddenCount =
+    matches && shownMatches ? matches.length - shownMatches.length : 0;
+
+  async function handlePlace(matchExtId: number, pick: BetPick, stake: number) {
+    setErr("");
+    try {
+      await placeBet({ code, matchExtId, pick, stake });
+    } catch (e: any) {
+      setErr(e.message ?? "Could not place the bet.");
+    }
+  }
+
+  async function handleCancel(matchExtId: number) {
+    setErr("");
+    try {
+      await cancelBet({ code, matchExtId });
+    } catch (e: any) {
+      setErr(e.message ?? "Could not cancel the bet.");
+    }
+  }
+
+  return (
+    <CollapsibleSection
+      id="betting"
+      title="Betting"
+      subtitle="back real World Cup results · winnings fold into the standings"
+    >
+      {bankroll && (
+        <div className="bank-header">
+          <div className="bank-stat">
+            <span className="bank-num">{available}</span>
+            <span className="bank-lbl">available</span>
+          </div>
+          <div className="bank-stat">
+            <span className="bank-num">{bankroll.pendingStakes}</span>
+            <span className="bank-lbl">in play</span>
+          </div>
+          <div
+            className={`bank-stat${bankroll.settledNet > 0 ? " up" : bankroll.settledNet < 0 ? " down" : ""}`}
+          >
+            <span className="bank-num">
+              {bankroll.settledNet > 0 ? "+" : ""}
+              {bankroll.settledNet}
+            </span>
+            <span className="bank-lbl">settled P&amp;L</span>
+          </div>
+        </div>
+      )}
+
+      {err && <div className="err">{err}</div>}
+
+      <h4 className="bet-subhead">
+        Bettable fixtures
+        {!showAll && nextDay && shownMatches && shownMatches.length > 0 && (
+          <span className="bet-subhead-note"> · {nextDay}</span>
+        )}
+      </h4>
+      {matches === undefined ? (
+        <p className="hint">Loading…</p>
+      ) : matches.length === 0 ? (
+        <p className="hint">
+          No open fixtures to bet on right now - check back when the next round
+          is scheduled.
+        </p>
+      ) : (
+        <>
+          <div className="bet-matches">
+            {shownMatches!.map((m) => (
+              <BetRow
+                key={m.matchExtId}
+                m={m}
+                available={available}
+                onPlace={handlePlace}
+                onCancel={handleCancel}
+              />
+            ))}
+          </div>
+          {(showAll || hiddenCount > 0) && (
+            <button
+              type="button"
+              className="bet-showall-btn"
+              onClick={() => setShowAll((v) => !v)}
+            >
+              {showAll
+                ? "Show next matchday only"
+                : `Show all fixtures (${hiddenCount} more)`}
+            </button>
+          )}
+        </>
+      )}
+
+      {bets && bets.length > 0 && (
+        <>
+          <h4 className="bet-subhead">Your bets</h4>
+          <div className="bet-list">
+            {bets.map((b) => (
+              <MyBetRow key={b.matchExtId} b={b} />
+            ))}
+          </div>
+        </>
+      )}
+    </CollapsibleSection>
+  );
+}
+
+// A single bettable fixture: outcome buttons priced with their odds, a whole-
+// number stake input, and place/edit/cancel. Local draft state seeds from any
+// existing bet so editing feels in-place.
+function BetRow({
+  m,
+  available,
+  onPlace,
+  onCancel,
+}: {
+  m: BettableMatch;
+  available: number;
+  onPlace: (matchExtId: number, pick: BetPick, stake: number) => void;
+  onCancel: (matchExtId: number) => void;
+}) {
+  const [pick, setPick] = useState<BetPick | null>(m.myBet?.pick ?? null);
+  const [stakeStr, setStakeStr] = useState(
+    m.myBet ? String(m.myBet.stake) : "",
+  );
+  const stake = Math.floor(Number(stakeStr));
+
+  // Replacing this match's existing bet frees its held stake, so the cap is the
+  // available bankroll plus whatever's already staked here.
+  const maxStake = available + (m.myBet?.stake ?? 0);
+  const stakeValid = Number.isInteger(stake) && stake >= 1 && stake <= maxStake;
+  const chosenOdds =
+    pick && m.odds[pick] !== undefined ? (m.odds[pick] as number) : null;
+  const potential = chosenOdds && stakeValid ? Math.round(stake * chosenOdds) : null;
+
+  const outcomes: BetPick[] = m.isKnockout
+    ? ["HOME", "AWAY"]
+    : ["HOME", "DRAW", "AWAY"];
+
+  const kickoff = new Date(m.utcDate).toLocaleString(undefined, {
+    weekday: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+
+  return (
+    <div className="bet-match">
+      <div className="bm-teams">
+        <span className="bm-team">
+          <span className="flag">{m.homeFlag}</span>
+          {m.homeTeam}
+        </span>
+        <span className="bm-v">v</span>
+        <span className="bm-team away">
+          {m.awayTeam}
+          <span className="flag">{m.awayFlag}</span>
+        </span>
+      </div>
+      <div className="bm-meta">{kickoff}</div>
+      <div className="bm-odds">
+        {outcomes.map((o) => {
+          const odd = m.odds[o] as number;
+          const label =
+            o === "HOME" ? m.homeTeam : o === "AWAY" ? m.awayTeam : "Draw";
+          return (
+            <button
+              key={o}
+              type="button"
+              className={`odd-btn${pick === o ? " selected" : ""}`}
+              onClick={() => setPick(o)}
+            >
+              <span className="odd-label">{label}</span>
+              <span className="odd-x">×{odd.toFixed(2)}</span>
+            </button>
+          );
+        })}
+      </div>
+      <div className="bm-stake">
+        <input
+          type="number"
+          inputMode="numeric"
+          min={1}
+          max={maxStake}
+          step={1}
+          placeholder="Stake"
+          value={stakeStr}
+          onChange={(e) => setStakeStr(e.target.value)}
+        />
+        <button
+          type="button"
+          className="btn"
+          disabled={!pick || !stakeValid}
+          onClick={() => pick && onPlace(m.matchExtId, pick, stake)}
+        >
+          {m.myBet ? "Update bet" : "Place bet"}
+        </button>
+        {m.myBet && (
+          <button
+            type="button"
+            className="btn ghost"
+            onClick={() => onCancel(m.matchExtId)}
+          >
+            Cancel
+          </button>
+        )}
+      </div>
+      <div className="bm-foot">
+        {potential != null ? (
+          <span>
+            Returns <b>{potential}</b> if it lands ({PICK_LABEL[pick!]})
+          </span>
+        ) : maxStake < 1 ? (
+          <span className="hint">No bankroll left to stake.</span>
+        ) : (
+          <span className="hint">Pick an outcome and a whole-number stake.</span>
+        )}
+        {m.myBet && (
+          <span className="bm-current">
+            Current: {PICK_LABEL[m.myBet.pick]} · {m.myBet.stake} @ ×
+            {m.myBet.odds.toFixed(2)}
+          </span>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// One row in "Your bets": resolved match, the pick, and the open potential or
+// the settled win/loss.
+function MyBetRow({ b }: { b: MyBet }) {
+  const cls = b.open ? "open" : b.won ? "won" : "lost";
+  return (
+    <div className={`bet-row ${cls}`}>
+      <span className="flag">{b.homeFlag}</span>
+      <span className="flag">{b.awayFlag}</span>
+      <span className="br-match">
+        {b.homeTeam} v {b.awayTeam}
+      </span>
+      <span className="br-pick">
+        {PICK_LABEL[b.pick]} · {b.stake} @ ×{b.odds.toFixed(2)}
+      </span>
+      <span className={`br-result ${cls}`}>
+        {b.open
+          ? `to return ${b.potentialReturn}`
+          : b.won
+            ? `won +${b.settledNet}`
+            : `lost ${b.settledNet}`}
+      </span>
+    </div>
   );
 }
 

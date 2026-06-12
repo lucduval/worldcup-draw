@@ -1,6 +1,13 @@
-import { mutation, query, QueryCtx, MutationCtx } from "./_generated/server";
+import {
+  mutation,
+  query,
+  internalMutation,
+  QueryCtx,
+  MutationCtx,
+} from "./_generated/server";
 import { v } from "convex/values";
 import { Id, Doc } from "./_generated/dataModel";
+import { internal } from "./_generated/api";
 import { getAuthUserId } from "@convex-dev/auth/server";
 import {
   POOL,
@@ -8,8 +15,11 @@ import {
   REVEAL_MS,
   AFRICAN_POOL,
   ENTRY_FEE,
+  TIMER_PRESETS,
+  DEFAULT_TIMER_SECONDS,
   RANK_BY_NAME,
   tierForRank,
+  clampStartingPot,
 } from "./pool";
 import { avatarUrls } from "./account";
 
@@ -117,6 +127,106 @@ function whoseTurn(turnOrder: Id<"players">[], pickIndex: number) {
   const pos = pickIndex % n;
   const idx = round % 2 === 0 ? pos : n - 1 - pos;
   return { playerId: turnOrder[idx], tier: round + 1, round };
+}
+
+// ── Live turn timer ────────────────────────────────────────────────────────
+// When the host has the timer on, every turn is given a deadline; if the player
+// on the clock hasn't drawn by then, the server resolves the turn for them (see
+// resolveTimeout). These helpers compute the room patch fields that arm or
+// clear the timer, and schedule/cancel the backing auto-pick job.
+
+// Compute the {turnDeadline, timerJobId} patch for the turn at `pickIndex`.
+// Returns both cleared (undefined) when the timer is off, the draw isn't
+// running, or there's no active turn left. `afterReveal` pads the deadline by
+// the reveal animation, so a player gets their full `seconds` to actually tap
+// once the previous pick has finished revealing.
+async function armTimerPatch(
+  ctx: MutationCtx,
+  roomId: Id<"rooms">,
+  opts: {
+    pickIndex: number;
+    total: number;
+    status: "lobby" | "drawing" | "done";
+    enabled: boolean;
+    seconds: number;
+    now: number;
+    afterReveal: boolean;
+  },
+): Promise<{ turnDeadline?: number; timerJobId?: Id<"_scheduled_functions"> }> {
+  const { pickIndex, total, status, enabled, seconds, now, afterReveal } = opts;
+  if (!enabled || status !== "drawing" || pickIndex >= total) {
+    return { turnDeadline: undefined, timerJobId: undefined };
+  }
+  const turnDeadline = now + (afterReveal ? REVEAL_MS : 0) + seconds * 1000;
+  const timerJobId = await ctx.scheduler.runAt(
+    turnDeadline,
+    internal.rooms.resolveTimeout,
+    { roomId, forPickIndex: pickIndex },
+  );
+  return { turnDeadline, timerJobId };
+}
+
+// Resolve the turn currently on the clock: draw a random in-tier team for the
+// player on it (excluding their own African pick, exactly as a manual tap),
+// advance the pick index, lock the room if the tier draw + every African pick
+// are in, and arm the timer for the next turn. Shared by the manual draw, the
+// host's draw-for-a-player, and the auto-pick when a turn times out. Pass
+// `guardReveal` to refuse while the previous reveal is still animating (manual
+// taps want this; the timer auto-pick never collides with a reveal).
+async function resolveCurrentTurn(
+  ctx: MutationCtx,
+  room: Doc<"rooms">,
+  now: number,
+  guardReveal: boolean,
+): Promise<void> {
+  const { playerId, tier } = whoseTurn(room.turnOrder, room.pickIndex);
+  const current = await ctx.db.get(playerId);
+  if (!current) throw new Error("Player not found.");
+
+  const teams = await ctx.db
+    .query("teams")
+    .withIndex("by_room", (q) => q.eq("roomId", room._id))
+    .collect();
+
+  if (guardReveal) {
+    const stillRevealing = teams.some(
+      (t) => t.assignedAt && now < t.assignedAt + REVEAL_MS,
+    );
+    if (stillRevealing) throw new Error("Hold on - a team is being revealed.");
+  }
+
+  const pick = pickTierTeam(teams, tier, current.africanTeam?.name);
+  if (!pick) throw new Error("No teams left in this tier.");
+  await ctx.db.patch(pick._id, { ownerId: playerId, assignedAt: now });
+
+  const total = totalPicks(room.turnOrder.length);
+  const nextIndex = room.pickIndex + 1;
+  // Lock only once the tier picks are done AND every player has made their
+  // off-clock African bonus pick - never strand a straggler still choosing.
+  let done = false;
+  if (nextIndex >= total) {
+    const allPlayers = await ctx.db
+      .query("players")
+      .withIndex("by_room", (q) => q.eq("roomId", room._id))
+      .collect();
+    done = allAfricanPicked(allPlayers);
+  }
+  const status: "drawing" | "done" = done ? "done" : "drawing";
+
+  // The job for the turn we just resolved is spent - cancel it (a no-op when
+  // it's the running timeout job itself) before arming the next turn's clock.
+  if (room.timerJobId) await ctx.scheduler.cancel(room.timerJobId);
+  const timer = await armTimerPatch(ctx, room._id, {
+    pickIndex: nextIndex,
+    total,
+    status,
+    enabled: room.timerEnabled ?? false,
+    seconds: room.timerSeconds ?? DEFAULT_TIMER_SECONDS,
+    now,
+    afterReveal: true,
+  });
+
+  await ctx.db.patch(room._id, { pickIndex: nextIndex, status, ...timer });
 }
 
 // Reconstruct the async draw as an ordered playback script the client animates:
@@ -283,8 +393,9 @@ export const createRoom = mutation({
     name: v.string(),
     entryFee: v.optional(v.number()),
     mode: v.optional(v.union(v.literal("live"), v.literal("async"))),
+    startingPot: v.optional(v.number()),
   },
-  handler: async (ctx, { name, entryFee, mode }) => {
+  handler: async (ctx, { name, entryFee, mode, startingPot }) => {
     const userId = await requireUser(ctx);
 
     // Clamp the buy-in to a sane whole-Rand amount; fall back to the default.
@@ -292,6 +403,9 @@ export const createRoom = mutation({
       entryFee == null || !Number.isFinite(entryFee)
         ? ENTRY_FEE
         : Math.min(100000, Math.max(0, Math.round(entryFee)));
+
+    // Per-player betting bankroll; defaults to STARTING_POT_DEFAULT, 0 = off.
+    const pot = clampStartingPot(startingPot);
 
     let code = "";
     for (let i = 0; i < 12; i++) {
@@ -314,6 +428,7 @@ export const createRoom = mutation({
       hostId: userId,
       mode: mode === "async" ? "async" : "live",
       entryFee: fee,
+      startingPot: pot,
       turnOrder: [],
       pickIndex: 0,
     });
@@ -357,6 +472,132 @@ export const setMode = mutation({
     if (room.status !== "lobby")
       throw new Error("The draw has already started.");
     if ((room.mode ?? "live") !== mode) await ctx.db.patch(room._id, { mode });
+  },
+});
+
+// The betting pot is frozen the moment the first bet is placed - changing it
+// after that would retroactively shift every player's bankroll baseline. Before
+// then it's freely editable (lobby, or a `done` room with no bets yet), which is
+// what lets an in-progress game opt into betting mid-tournament. Kickoff itself
+// is irrelevant: only upcoming SCHEDULED/TIMED fixtures are ever bettable (see
+// betting.ts `isOpen`), so enabling betting late can't touch a known result.
+async function roomHasBets(
+  ctx: QueryCtx | MutationCtx,
+  roomId: Id<"rooms">,
+): Promise<boolean> {
+  const first = await ctx.db
+    .query("bets")
+    .withIndex("by_room", (q) => q.eq("roomId", roomId))
+    .first();
+  return first !== null;
+}
+
+// Exposed so the host's pot control can disable itself once the pot is locked,
+// instead of letting the host change it and fail on submit.
+export const potLocked = query({
+  args: { code: v.string() },
+  handler: async (ctx, { code }) => {
+    const room = await ctx.db
+      .query("rooms")
+      .withIndex("by_code", (q) => q.eq("code", code))
+      .unique();
+    if (!room) return false;
+    return roomHasBets(ctx, room._id);
+  },
+});
+
+// Host sets the per-player betting bankroll (0 = betting off). Editable in the
+// lobby, OR on an already-drawn (`done`) room until the first bet is placed - so
+// an existing game can opt into betting at any point, including mid-tournament
+// (players then back the remaining fixtures). Refused during the draw, and
+// locked for good once any bet exists, which freezes everyone's bankroll
+// baseline.
+export const setPot = mutation({
+  args: { code: v.string(), startingPot: v.number() },
+  handler: async (ctx, { code, startingPot }) => {
+    const userId = await requireUser(ctx);
+    const room = await ctx.db
+      .query("rooms")
+      .withIndex("by_code", (q) => q.eq("code", code))
+      .unique();
+    if (!room) throw new Error("Room not found.");
+    if (room.hostId !== userId)
+      throw new Error("Only the host can change the betting pot.");
+    if (room.status === "drawing")
+      throw new Error("Finish the draw before changing the betting pot.");
+
+    // Locked once any bet exists; harmless to re-baseline before then.
+    if (await roomHasBets(ctx, room._id))
+      throw new Error("Players have already placed bets - the pot is locked.");
+
+    await ctx.db.patch(room._id, { startingPot: clampStartingPot(startingPot) });
+  },
+});
+
+// Host toggles the live-draw turn timer (and picks its length). Works in the
+// lobby AND mid-draw. Turning it on mid-draw starts the clock on the current
+// turn straight away; turning it off cancels the pending auto-pick. A length
+// change while it's already running takes effect from the next turn, so nobody
+// loses time mid-turn. The length must be one of the offered presets.
+export const setTimer = mutation({
+  args: {
+    code: v.string(),
+    enabled: v.boolean(),
+    seconds: v.optional(v.number()),
+  },
+  handler: async (ctx, { code, enabled, seconds }) => {
+    const userId = await requireUser(ctx);
+    const room = await ctx.db
+      .query("rooms")
+      .withIndex("by_code", (q) => q.eq("code", code))
+      .unique();
+    if (!room) throw new Error("Room not found.");
+    if (room.hostId !== userId)
+      throw new Error("Only the host can change the timer.");
+    if (room.mode === "async")
+      throw new Error("The turn timer is for live draws only.");
+    if (room.status === "done")
+      throw new Error("The draw is already locked.");
+
+    // Clamp the length to a known preset; otherwise keep the current/default.
+    const secs =
+      seconds != null && (TIMER_PRESETS as readonly number[]).includes(seconds)
+        ? seconds
+        : room.timerSeconds ?? DEFAULT_TIMER_SECONDS;
+
+    const wasEnabled = room.timerEnabled ?? false;
+    const patch: Record<string, unknown> = {
+      timerEnabled: enabled,
+      timerSeconds: secs,
+    };
+
+    // Mid-draw transitions touch the live clock; the lobby just stores the
+    // setting (startGame arms the first turn from it).
+    if (room.status === "drawing") {
+      const total = totalPicks(room.turnOrder.length);
+      const hasActiveTurn = room.pickIndex < total;
+      if (!enabled) {
+        if (room.timerJobId) await ctx.scheduler.cancel(room.timerJobId);
+        patch.timerJobId = undefined;
+        patch.turnDeadline = undefined;
+      } else if (!wasEnabled && hasActiveTurn) {
+        if (room.timerJobId) await ctx.scheduler.cancel(room.timerJobId);
+        const timer = await armTimerPatch(ctx, room._id, {
+          pickIndex: room.pickIndex,
+          total,
+          status: "drawing",
+          enabled: true,
+          seconds: secs,
+          now: Date.now(),
+          afterReveal: false,
+        });
+        Object.assign(patch, timer);
+      }
+      // Already-on and staying on: leave the current deadline/job in place; the
+      // new length applies when the next turn arms.
+    }
+
+    await ctx.db.patch(room._id, patch);
   },
 });
 
@@ -428,10 +669,22 @@ export const startGame = mutation({
       .collect();
     await retierForDraw(ctx, teams, players.length);
 
+    // Arm the turn timer for the opening pick if the host left it on.
+    const timer = await armTimerPatch(ctx, room._id, {
+      pickIndex: 0,
+      total: totalPicks(turnOrder.length),
+      status: "drawing",
+      enabled: room.timerEnabled ?? false,
+      seconds: room.timerSeconds ?? DEFAULT_TIMER_SECONDS,
+      now: Date.now(),
+      afterReveal: false,
+    });
+
     await ctx.db.patch(room._id, {
       status: "drawing",
       turnOrder,
       pickIndex: 0,
+      ...timer,
     });
   },
 });
@@ -452,44 +705,12 @@ export const draw = mutation({
     const total = totalPicks(room.turnOrder.length);
     if (room.pickIndex >= total) throw new Error("The draw is complete.");
 
-    const { playerId, tier } = whoseTurn(room.turnOrder, room.pickIndex);
+    const { playerId } = whoseTurn(room.turnOrder, room.pickIndex);
     const current = await ctx.db.get(playerId);
     if (!current) throw new Error("Player not found.");
     if (current.userId !== userId) throw new Error("It's not your turn.");
 
-    const teams = await ctx.db
-      .query("teams")
-      .withIndex("by_room", (q) => q.eq("roomId", room._id))
-      .collect();
-
-    // Block a new pick while the previous reveal is still animating.
-    const now = Date.now();
-    const stillRevealing = teams.some(
-      (t) => t.assignedAt && now < t.assignedAt + REVEAL_MS,
-    );
-    if (stillRevealing) throw new Error("Hold on - a team is being revealed.");
-
-    const pick = pickTierTeam(teams, tier, current.africanTeam?.name);
-    if (!pick) throw new Error("No teams left in this tier.");
-    await ctx.db.patch(pick._id, { ownerId: playerId, assignedAt: now });
-
-    const nextIndex = room.pickIndex + 1;
-    // Lock only once the tier picks are done AND every player has made their
-    // off-clock African bonus pick - never strand a straggler still choosing.
-    // Until then the room stays "drawing" with the tier draw finished; the last
-    // African pick flips it to "done" (see pickAfrican).
-    let done = false;
-    if (nextIndex >= total) {
-      const allPlayers = await ctx.db
-        .query("players")
-        .withIndex("by_room", (q) => q.eq("roomId", room._id))
-        .collect();
-      done = allAfricanPicked(allPlayers);
-    }
-    await ctx.db.patch(room._id, {
-      pickIndex: nextIndex,
-      status: done ? "done" : "drawing",
-    });
+    await resolveCurrentTurn(ctx, room, Date.now(), true);
   },
 });
 
@@ -566,43 +787,26 @@ export const hostDraw = mutation({
     const total = totalPicks(room.turnOrder.length);
     if (room.pickIndex >= total) throw new Error("The draw is complete.");
 
-    const { playerId, tier } = whoseTurn(room.turnOrder, room.pickIndex);
-    const current = await ctx.db.get(playerId);
-    if (!current) throw new Error("Player not found.");
+    await resolveCurrentTurn(ctx, room, Date.now(), true);
+  },
+});
 
-    const teams = await ctx.db
-      .query("teams")
-      .withIndex("by_room", (q) => q.eq("roomId", room._id))
-      .collect();
+// Auto-pick when a turn's timer runs out. Scheduled per turn by armTimerPatch;
+// fires even if every tab is closed, so a slow or absent player never stalls a
+// timed draw. Guards make it a no-op if the turn already advanced (a manual tap
+// beat the clock), the timer was switched off, or the draw moved on - the
+// stamped `forPickIndex` is what ties this job to the turn it was armed for.
+export const resolveTimeout = internalMutation({
+  args: { roomId: v.id("rooms"), forPickIndex: v.number() },
+  handler: async (ctx, { roomId, forPickIndex }) => {
+    const room = await ctx.db.get(roomId);
+    if (!room) return;
+    if (room.status !== "drawing") return;
+    if (!room.timerEnabled) return;
+    const total = totalPicks(room.turnOrder.length);
+    if (room.pickIndex !== forPickIndex || room.pickIndex >= total) return;
 
-    // Block while the previous reveal is still animating, same as a self-draw.
-    const now = Date.now();
-    const stillRevealing = teams.some(
-      (t) => t.assignedAt && now < t.assignedAt + REVEAL_MS,
-    );
-    if (stillRevealing) throw new Error("Hold on - a team is being revealed.");
-
-    const pick = pickTierTeam(teams, tier, current.africanTeam?.name);
-    if (!pick) throw new Error("No teams left in this tier.");
-    await ctx.db.patch(pick._id, { ownerId: playerId, assignedAt: now });
-
-    const nextIndex = room.pickIndex + 1;
-    // Lock only once the tier picks are done AND every player has made their
-    // off-clock African bonus pick - never strand a straggler still choosing.
-    // Until then the room stays "drawing" with the tier draw finished; the last
-    // African pick flips it to "done" (see pickAfrican).
-    let done = false;
-    if (nextIndex >= total) {
-      const allPlayers = await ctx.db
-        .query("players")
-        .withIndex("by_room", (q) => q.eq("roomId", room._id))
-        .collect();
-      done = allAfricanPicked(allPlayers);
-    }
-    await ctx.db.patch(room._id, {
-      pickIndex: nextIndex,
-      status: done ? "done" : "drawing",
-    });
+    await resolveCurrentTurn(ctx, room, Date.now(), false);
   },
 });
 
@@ -672,10 +876,14 @@ export const autoAllocate = mutation({
       }
     }
 
+    // The draw is settling instantly - kill any pending turn timer.
+    if (room.timerJobId) await ctx.scheduler.cancel(room.timerJobId);
     await ctx.db.patch(room._id, {
       status: "done",
       turnOrder,
       pickIndex: total,
+      timerJobId: undefined,
+      turnDeadline: undefined,
     });
   },
 });
@@ -829,11 +1037,20 @@ export const deleteRoom = mutation({
     if (room.hostId !== userId)
       throw new Error("Only the host can delete the game.");
 
+    // Cancel any pending turn-timer job so it doesn't fire on a dead room.
+    if (room.timerJobId) await ctx.scheduler.cancel(room.timerJobId);
+
     const teams = await ctx.db
       .query("teams")
       .withIndex("by_room", (q) => q.eq("roomId", room._id))
       .collect();
     for (const t of teams) await ctx.db.delete(t._id);
+
+    const bets = await ctx.db
+      .query("bets")
+      .withIndex("by_room", (q) => q.eq("roomId", room._id))
+      .collect();
+    for (const b of bets) await ctx.db.delete(b._id);
 
     const roomPlayers = await ctx.db
       .query("players")
@@ -865,6 +1082,12 @@ export const resetRoom = mutation({
     for (const t of teams) {
       await ctx.db.patch(t._id, { ownerId: undefined, assignedAt: undefined });
     }
+    // Wipe any bets so a re-draw starts with fresh bankrolls.
+    const bets = await ctx.db
+      .query("bets")
+      .withIndex("by_room", (q) => q.eq("roomId", room._id))
+      .collect();
+    for (const b of bets) await ctx.db.delete(b._id);
     const roomPlayers = await ctx.db
       .query("players")
       .withIndex("by_room", (q) => q.eq("roomId", room._id))
@@ -876,10 +1099,15 @@ export const resetRoom = mutation({
           watchedAt: undefined,
         });
     }
+    // Drop any pending turn timer; the host's on/off + length preference is
+    // kept so a re-draw starts with the same timer settings.
+    if (room.timerJobId) await ctx.scheduler.cancel(room.timerJobId);
     await ctx.db.patch(room._id, {
       status: "lobby",
       turnOrder: [],
       pickIndex: 0,
+      timerJobId: undefined,
+      turnDeadline: undefined,
     });
   },
 });

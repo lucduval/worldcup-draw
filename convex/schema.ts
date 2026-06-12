@@ -19,6 +19,9 @@ export default defineSchema({
     phoneVerificationTime: v.optional(v.number()),
     isAnonymous: v.optional(v.boolean()),
     imageId: v.optional(v.id("_storage")), // profile picture in file storage
+    // Whether this account has seen the first-login "how it works" walkthrough.
+    // Optional so existing accounts read as not-yet-seen (undefined ⇒ show once).
+    seenIntro: v.optional(v.boolean()),
   })
     .index("email", ["email"])
     .index("phone", ["phone"]),
@@ -40,8 +43,22 @@ export default defineSchema({
     // Per-draw buy-in (Rand) chosen by the host. Optional so rooms created
     // before this field fall back to the ENTRY_FEE default.
     entryFee: v.optional(v.number()),
+    // Per-player starting betting bankroll (whole points), host-set in the lobby
+    // or on a not-yet-kicked-off `done` room (see setPot). 0 disables betting.
+    // Optional so pre-existing rooms read as "betting off" (undefined ⇒ 0) and
+    // never silently gain the feature. New rooms default to STARTING_POT_DEFAULT.
+    startingPot: v.optional(v.number()),
     turnOrder: v.array(v.id("players")), // set when the game starts
     pickIndex: v.number(), // how many picks have been made
+    // Live-mode turn timer (host-toggled, see setTimer). When `timerEnabled`,
+    // each turn gets `timerSeconds` on the clock; `turnDeadline` is the
+    // wall-clock ms the current turn auto-resolves, and `timerJobId` is the
+    // scheduled auto-pick so it can be cancelled when the turn advances early.
+    // All optional so existing rooms default to "timer off".
+    timerEnabled: v.optional(v.boolean()),
+    timerSeconds: v.optional(v.number()),
+    turnDeadline: v.optional(v.number()),
+    timerJobId: v.optional(v.id("_scheduled_functions")),
   }).index("by_code", ["code"]),
 
   players: defineTable({
@@ -70,6 +87,23 @@ export default defineSchema({
     ownerId: v.optional(v.id("players")),
     assignedAt: v.optional(v.number()), // wall-clock ms of the pick
   }).index("by_room", ["roomId"]),
+
+  // Per-room match bets. The bankroll is never stored - it is derived on read
+  // from these rows plus the shared `matches` table (see convex/betting.ts), so
+  // a corrected result auto-re-settles. Invariant: at most one bet per
+  // (roomId, playerId, matchExtId), enforced in placeBet (edit replaces).
+  bets: defineTable({
+    roomId: v.id("rooms"),
+    playerId: v.id("players"),
+    userId: v.id("users"), // denormalised for ownership checks
+    matchExtId: v.number(), // -> matches.extId
+    pick: v.union(v.literal("HOME"), v.literal("DRAW"), v.literal("AWAY")),
+    stake: v.number(), // whole number, >= 1
+    odds: v.number(), // decimal odds snapshotted at placement
+    placedAt: v.number(),
+  })
+    .index("by_room", ["roomId"])
+    .index("by_room_player", ["roomId", "playerId"]),
 
   // World Cup match results, synced from football-data.org. Shared by every
   // room - standings are computed per room from the teams each player owns.

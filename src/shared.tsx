@@ -4,7 +4,7 @@ import { ENTRY_FEE } from "../convex/pool";
 
 // Remembers a section's open/closed state per browser, keyed by a stable id, so
 // each section stays the way the player last left it across reloads and visits.
-export function useCollapsed(id: string, defaultOpen = true) {
+export function useCollapsed(id: string, defaultOpen = false) {
   const storageKey = `wc.collapsed.${id}`;
   const [open, setOpen] = useState<boolean>(() => {
     try {
@@ -30,7 +30,7 @@ export function CollapsibleSection({
   id,
   title,
   subtitle,
-  defaultOpen = true,
+  defaultOpen = false,
   children,
 }: {
   id: string;

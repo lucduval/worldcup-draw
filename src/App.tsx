@@ -19,6 +19,8 @@ import { ConvexAuthProvider } from "@convex-dev/auth/react";
 import { api } from "../convex/_generated/api";
 import AuthScreen from "./AuthScreen";
 import SiteHeader from "./SiteHeader";
+import SiteFooter from "./SiteFooter";
+import IntroTour from "./IntroTour";
 import MyAccount from "./MyAccount";
 import HowItWorks from "./HowItWorks";
 import WorldCupFacts from "./WorldCupFacts";
@@ -50,6 +52,8 @@ export default function App() {
       <Authenticated>
         <BrowserRouter>
           <SiteHeader />
+          {/* One-time guided walkthrough on first login (skipped for invitees). */}
+          <IntroTour />
           <Routes>
             <Route path="/games" element={<GamesHome />} />
             <Route path="/games/:code" element={<GamesHome />} />
@@ -62,6 +66,7 @@ export default function App() {
             <Route path="/account" element={<MyAccount />} />
             <Route path="*" element={<Navigate to="/games" replace />} />
           </Routes>
+          <SiteFooter />
         </BrowserRouter>
       </Authenticated>
     </ConvexAuthProvider>
@@ -329,13 +334,17 @@ function JoinGame() {
   const { code } = useParams();
   const navigate = useNavigate();
   const joinRoom = useMutation(api.rooms.joinRoom);
+  const markIntroSeen = useMutation(api.account.markIntroSeen);
 
   useEffect(() => {
     let cancelled = false;
     async function go() {
       if (!code) return navigate("/games", { replace: true });
-      // Following an invite means you're entering the draw - skip the splash.
+      // Following an invite means you're entering the draw - skip the splash,
+      // and skip the first-login walkthrough (we mark it seen before routing in
+      // so the tour never flashes over the room they came to join).
       localStorage.setItem("wc_entered", "1");
+      await markIntroSeen().catch(() => {});
       // Try to join as a player. If that's blocked (the draw already started,
       // or the room is full) we still open the room so they can watch - only a
       // genuinely missing room sends them back to the list (handled by the
@@ -369,7 +378,7 @@ function Welcome({ onEnter }: { onEnter: () => void }) {
         </p>
       </header>
 
-      <div className="center-stage">
+      <div className="center-stage landing-stage">
         <div className="panel" style={{ textAlign: "center" }}>
           <h3>Kick-off</h3>
           <p className="hint">
