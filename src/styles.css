@@ -967,6 +967,7 @@ footer{text-align:center;color:var(--ink);font-weight:400;font-size:12px;padding
   margin:0 -6px;padding:2px 6px}
 .tour-slidecontent{margin:auto 0;display:flex;flex-direction:column;align-items:center;text-align:center;gap:12px;width:100%}
 .tour-text{color:var(--muted);font-size:15px;line-height:1.6;max-width:380px}
+.tour-text.lead{font-size:21px;line-height:1.45;color:var(--ink);font-weight:500;max-width:340px}
 /* Reuse the guide's card list/scoring inside the modal, just left-aligned. */
 .tour-slidecontent .hiw-steps,.tour-slidecontent .hiw-scoring{width:100%;text-align:left}
 .tour-slidecontent .hint{text-align:left}

@@ -20,6 +20,7 @@ type Slide = {
   badge: string; // number for a step, emoji for everything else
   title: string;
   body?: string;
+  lead?: boolean; // render the body larger (used for the welcome line)
   node?: React.ReactNode; // optional richer content (e.g. the scoring grid)
 };
 
@@ -28,7 +29,8 @@ const SLIDES: Slide[] = [
     kicker: "Welcome",
     badge: "👋",
     title: "The World Cup Draw",
-    body: "You and your mates each draw three random teams. Follow the matches through the tournament, and whoever's squad scores the most takes the pot. Takes a minute to learn.",
+    body: "Watch this quick guide — the whole game in about a minute.",
+    lead: true,
   },
   // The six core steps, numbered just like the guide page.
   ...STEPS.map(
@@ -160,7 +162,9 @@ export default function IntroTour() {
             each time the slide changes. */}
         <div className="tour-scroll" key={i}>
           <div className="tour-slidecontent">
-            {slide.body && <p className="tour-text">{slide.body}</p>}
+            {slide.body && (
+              <p className={`tour-text${slide.lead ? " lead" : ""}`}>{slide.body}</p>
+            )}
             {slide.node}
           </div>
         </div>
