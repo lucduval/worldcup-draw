@@ -710,13 +710,12 @@ footer{text-align:center;color:var(--ink);font-weight:400;font-size:12px;padding
 
 /* ── Phones: tighten padding, scale heroes, reflow tight rows ───────── */
 @media(max-width:520px){
-  /* Reclaim horizontal space - 22px each side is a lot on a 360px screen. */
   .wrap{
-    padding:0 16px;
-    padding-left:max(16px,env(safe-area-inset-left));
-    padding-right:max(16px,env(safe-area-inset-right));
+    padding:0 20px;
+    padding-left:max(20px,env(safe-area-inset-left));
+    padding-right:max(20px,env(safe-area-inset-right));
   }
-  .center-stage{padding:0 16px}
+  .center-stage{padding:0 20px}
   .section{padding-top:22px;padding-bottom:22px;margin-top:14px}
   .section.collapsed{padding-top:14px;padding-bottom:14px}
 
@@ -901,7 +900,7 @@ footer{text-align:center;color:var(--ink);font-weight:400;font-size:12px;padding
 .pot-row input[type=range]{flex:1;accent-color:var(--accent)}
 .pot-value{font-weight:600;color:var(--ink);min-width:52px;font-variant-numeric:tabular-nums}
 .pot-num{width:64px;padding:8px 10px;border:1px solid var(--line);border-radius:10px;
-  background:var(--card);color:var(--ink);font-family:'Outfit';font-size:14px}
+  background:var(--card);color:var(--ink);font-family:'Outfit';font-size:16px}
 .pot-impact{margin-bottom:0;color:var(--muted)}
 .pot-host-label{font-weight:600;color:var(--ink);font-size:14px}
 
@@ -1018,7 +1017,7 @@ footer{text-align:center;color:var(--ink);font-weight:400;font-size:12px;padding
 .odd-x{font-weight:600;font-variant-numeric:tabular-nums}
 .bm-stake{display:flex;gap:8px;align-items:center}
 .bm-stake input{flex:1;padding:10px 12px;border:1px solid var(--line);border-radius:10px;
-  background:var(--card);color:var(--ink);font-family:'Outfit';font-size:14px}
+  background:var(--card);color:var(--ink);font-family:'Outfit';font-size:16px}
 .bm-stake .btn{width:auto;white-space:nowrap}
 .bm-foot{display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;font-size:13px;color:var(--ink)}
 .bm-foot .hint{margin:0}
