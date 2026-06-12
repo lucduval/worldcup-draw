@@ -9,6 +9,7 @@ import {
   isUpcoming,
   involves,
 } from "./fixtures";
+import { CollapsibleSection } from "./shared";
 
 const NEXT_COUNT = 5;
 
@@ -59,13 +60,7 @@ export default function Fixtures({
   );
 
   return (
-    <section className="section wrap">
-      <div className="shead">
-        <h2>Fixtures</h2>
-        <span>all times SAST</span>
-        <div className="rule" />
-      </div>
-
+    <CollapsibleSection id="fixtures" title="Fixtures" subtitle="all times SAST">
       <div className="fx-card">
         <div className="fx-cardhead">
           <span className="fx-cardlabel">{stripLabel}</span>
@@ -138,7 +133,7 @@ export default function Fixtures({
           </aside>
         </>
       )}
-    </section>
+    </CollapsibleSection>
   );
 }
 

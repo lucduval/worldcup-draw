@@ -1,6 +1,64 @@
 // Presentational bits + pure helpers shared by Live and Local modes.
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { ENTRY_FEE } from "../convex/pool";
+
+// Remembers a section's open/closed state per browser, keyed by a stable id, so
+// each section stays the way the player last left it across reloads and visits.
+export function useCollapsed(id: string, defaultOpen = true) {
+  const storageKey = `wc.collapsed.${id}`;
+  const [open, setOpen] = useState<boolean>(() => {
+    try {
+      const v = localStorage.getItem(storageKey);
+      return v === null ? defaultOpen : v === "1";
+    } catch {
+      return defaultOpen;
+    }
+  });
+  useEffect(() => {
+    try {
+      localStorage.setItem(storageKey, open ? "1" : "0");
+    } catch {
+      /* storage unavailable (private mode) - just don't persist */
+    }
+  }, [storageKey, open]);
+  return [open, setOpen] as const;
+}
+
+// A page section whose header doubles as a collapse toggle. Collapsed state
+// persists per browser via useCollapsed.
+export function CollapsibleSection({
+  id,
+  title,
+  subtitle,
+  defaultOpen = true,
+  children,
+}: {
+  id: string;
+  title: string;
+  subtitle?: string;
+  defaultOpen?: boolean;
+  children: ReactNode;
+}) {
+  const [open, setOpen] = useCollapsed(id, defaultOpen);
+  return (
+    <section className={`section wrap${open ? "" : " collapsed"}`}>
+      <button
+        type="button"
+        className="shead shead-toggle"
+        aria-expanded={open}
+        onClick={() => setOpen((o) => !o)}
+      >
+        <h2>{title}</h2>
+        {subtitle && <span>{subtitle}</span>}
+        <div className="rule" />
+        <span className="shead-chev" aria-hidden>
+          {open ? "▾" : "▸"}
+        </span>
+      </button>
+      {open && children}
+    </section>
+  );
+}
 
 export const TIER_VAR = ["", "var(--tier1)", "var(--tier2)", "var(--tier3)"];
 export const TIER_NAME = ["", "Tier 1", "Tier 2", "Tier 3"];

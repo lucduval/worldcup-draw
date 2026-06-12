@@ -14,7 +14,7 @@ const NAV: NavItem[] = [
   { to: "/how-it-works", label: "How it works" },
   { to: "/standings", label: "Standings" },
   { to: "/fixtures", label: "Fixtures" },
-  { to: "/results", label: "Results", soon: true },
+  { to: "/results", label: "Results" },
   { to: "/facts", label: "WC facts" },
 ];
 

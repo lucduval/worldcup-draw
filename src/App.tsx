@@ -23,6 +23,7 @@ import MyAccount from "./MyAccount";
 import HowItWorks from "./HowItWorks";
 import WorldCupFacts from "./WorldCupFacts";
 import Fixtures from "./FixturesView";
+import { sastDate, sastTime } from "./fixtures";
 
 // The room UI is the heavy part of the app. Loading it lazily keeps the
 // landing → auth → welcome flow lean.
@@ -173,8 +174,23 @@ function GroupTable({
   );
 }
 
-// ── Results page - placeholder until scores go live ─────────
+// ── Results page - every kicked-off match, newest first, live from football-data.org ─
 function ResultsPage() {
+  const matches = useQuery(api.results.recentMatches);
+
+  // Group the (already newest-first) list into match days by SAST date.
+  const days = useMemo(() => {
+    if (!matches) return [];
+    const out: { date: string; items: typeof matches }[] = [];
+    for (const m of matches) {
+      const d = sastDate(m.utcDate);
+      const last = out[out.length - 1];
+      if (last && last.date === d) last.items.push(m);
+      else out.push({ date: d, items: [m] });
+    }
+    return out;
+  }, [matches]);
+
   return (
     <>
       <header className="wrap">
@@ -182,17 +198,83 @@ function ResultsPage() {
         <h1>
           The <em>results</em>
         </h1>
+        <p className="sub">
+          Every match that’s kicked off, freshest first — full-time scores and
+          anything live right now, updated through the tournament.
+        </p>
       </header>
-      <div className="center-stage">
-        <div className="panel" style={{ textAlign: "center" }}>
-          <h3>Coming soon</h3>
+
+      <div className="wrap">
+        {matches === undefined ? (
+          <p className="hint">Loading results…</p>
+        ) : days.length === 0 ? (
           <p className="hint">
-            Live scores and standings will land here once the tournament kicks
-            off. Check back closer to the first whistle.
+            No matches have kicked off yet. Scores will land here the moment the
+            first whistle blows.
           </p>
-        </div>
+        ) : (
+          <div className="res-days">
+            {days.map((d) => (
+              <section className="res-day" key={d.date}>
+                <div className="res-dayhead">{d.date}</div>
+                <div className="res-list">
+                  {d.items.map((m) => (
+                    <ResultRow key={m.id} m={m} />
+                  ))}
+                </div>
+              </section>
+            ))}
+          </div>
+        )}
       </div>
     </>
+  );
+}
+
+type MatchResult = NonNullable<
+  ReturnType<typeof useQuery<typeof api.results.recentMatches>>
+>[number];
+
+function ResultRow({ m }: { m: MatchResult }) {
+  const hasScore = m.homeGoals !== null && m.awayGoals !== null;
+  return (
+    <div className="res-row">
+      <div
+        className={`res-side${m.winner === "HOME" ? " win" : m.winner === "AWAY" ? " lose" : ""}`}
+      >
+        <span className="res-flag">{m.homeFlag ?? "🏳️"}</span>
+        <span className="res-name">{m.homeTeam}</span>
+      </div>
+
+      <div className="res-score">
+        {hasScore ? (
+          <span className="res-nums">
+            {m.homeGoals}
+            <span className="res-dash">–</span>
+            {m.awayGoals}
+          </span>
+        ) : (
+          <span className="res-vs">v</span>
+        )}
+        {m.live ? (
+          <span className="res-live">● Live</span>
+        ) : (
+          <span className="res-ft">FT</span>
+        )}
+      </div>
+
+      <div
+        className={`res-side r${m.winner === "AWAY" ? " win" : m.winner === "HOME" ? " lose" : ""}`}
+      >
+        <span className="res-name">{m.awayTeam}</span>
+        <span className="res-flag">{m.awayFlag ?? "🏳️"}</span>
+      </div>
+
+      <div className="res-meta">
+        <span className="res-stage">{m.stage}</span>
+        <span className="res-time">{sastTime(m.utcDate)}</span>
+      </div>
+    </div>
   );
 }
 

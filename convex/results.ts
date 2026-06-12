@@ -243,6 +243,45 @@ export const upsertGroupStandings = internalMutation({
   },
 });
 
+// Map football-data stage codes to friendly labels for the Results page.
+const STAGE_LABEL: Record<string, string> = {
+  GROUP_STAGE: "Group stage",
+  LAST_16: "Round of 16",
+  ROUND_OF_16: "Round of 16",
+  QUARTER_FINALS: "Quarter-final",
+  SEMI_FINALS: "Semi-final",
+  THIRD_PLACE: "Third place",
+  FINAL: "Final",
+};
+function stageLabel(stage: string): string {
+  return STAGE_LABEL[stage] ?? "Match";
+}
+
+// Public: matches that have kicked off (live or finished), newest first, for the
+// Results page. Scheduled fixtures live on the Fixtures page, so we drop them.
+export const recentMatches = query({
+  args: {},
+  handler: async (ctx) => {
+    const all = await ctx.db.query("matches").collect();
+    const played = all.filter((m) => m.status !== "SCHEDULED" && m.status !== "TIMED");
+    played.sort((a, b) => b.utcDate.localeCompare(a.utcDate));
+    return played.map((m) => ({
+      id: m.extId,
+      stage: stageLabel(m.stage),
+      status: m.status,
+      live: m.status === "IN_PLAY" || m.status === "PAUSED",
+      utcDate: m.utcDate,
+      homeTeam: m.homeTeam,
+      awayTeam: m.awayTeam,
+      homeFlag: flagFor(m.homeTeam),
+      awayFlag: flagFor(m.awayTeam),
+      homeGoals: m.homeGoals ?? null,
+      awayGoals: m.awayGoals ?? null,
+      winner: m.winner ?? null,
+    }));
+  },
+});
+
 // Public: the full set of group tables, ordered A–L, for the Standings page.
 export const groups = query({
   args: {},

@@ -16,6 +16,7 @@ import {
 } from "../convex/pool";
 import {
   Avatar,
+  CollapsibleSection,
   CopyInvite,
   Header,
   RevealOverlay,
@@ -362,6 +363,16 @@ function Room({
         ...(me.africanTeam ? [me.africanTeam.name] : []),
       ]
     : [];
+
+  // Show the viewer's own squad first on the board; everyone else keeps their
+  // existing order behind it.
+  const orderedPlayers = useMemo(() => {
+    if (!viewerId) return players;
+    return [
+      ...players.filter((p) => p.userId === viewerId),
+      ...players.filter((p) => p.userId !== viewerId),
+    ];
+  }, [players, viewerId]);
 
   // Map every assigned team (incl. African picks) → its owner's name, so the
   // fixtures list can show who's playing who at a glance.
@@ -880,14 +891,13 @@ function Room({
       )}
 
       {/* Players board */}
-      <section className="section wrap">
-        <div className="shead">
-          <h2>The Squads</h2>
-          <span>one per tier · plus an African pick (double points)</span>
-          <div className="rule" />
-        </div>
+      <CollapsibleSection
+        id="squads"
+        title="The Squads"
+        subtitle="one per tier · plus an African pick (double points)"
+      >
         <div className="players">
-          {players.map((p) => (
+          {orderedPlayers.map((p) => (
             <PlayerCard
               key={p._id}
               player={p}
@@ -900,18 +910,17 @@ function Room({
             />
           ))}
         </div>
-      </section>
+      </CollapsibleSection>
 
       {/* Standings - live once the draw is locked and results roll in */}
       {done && <Standings code={room.code} viewerId={viewerId} />}
 
       {/* Tier pools */}
-      <section className="section wrap">
-        <div className="shead">
-          <h2>The Pots</h2>
-          <span>what’s left in each tier</span>
-          <div className="rule" />
-        </div>
+      <CollapsibleSection
+        id="pots"
+        title="The Pots"
+        subtitle="what’s left in each tier"
+      >
         <div className="tiers">
           {[1, 2, 3].map((tier) => {
             const tierTeams = teams
@@ -953,7 +962,7 @@ function Room({
             );
           })}
         </div>
-      </section>
+      </CollapsibleSection>
 
       {/* Teams cut to fit the player count - shown so it's clear what's out */}
       {(() => {
@@ -965,15 +974,11 @@ function Room({
           );
         if (cut.length === 0) return null;
         return (
-          <section className="section wrap">
-            <div className="shead">
-              <h2>Left out</h2>
-              <span>
-                {cut.length} team{cut.length === 1 ? "" : "s"} cut to fit{" "}
-                {players.length} players - top {players.length * TIERS} play
-              </span>
-              <div className="rule" />
-            </div>
+          <CollapsibleSection
+            id="leftout"
+            title="Left out"
+            subtitle={`${cut.length} team${cut.length === 1 ? "" : "s"} cut to fit ${players.length} players - top ${players.length * TIERS} play`}
+          >
             <div className="teamlist cutlist">
               {cut.map((t) => (
                 <div className="team cut" key={t._id}>
@@ -982,7 +987,7 @@ function Room({
                 </div>
               ))}
             </div>
-          </section>
+          </CollapsibleSection>
         );
       })()}
 
@@ -1033,13 +1038,11 @@ function Standings({
   );
 
   return (
-    <section className="section wrap">
-      <div className="shead">
-        <h2>Standings</h2>
-        <span>3 win · 1 draw · 0 loss · African team scores double</span>
-        <div className="rule" />
-      </div>
-
+    <CollapsibleSection
+      id="standings"
+      title="Standings"
+      subtitle="3 win · 1 draw · 0 loss · African team scores double"
+    >
       {!anyResults && (
         <p className="hint" style={{ marginBottom: 14 }}>
           No results yet - points appear here as World Cup matches are played.
@@ -1081,7 +1084,7 @@ function Standings({
           );
         })}
       </div>
-    </section>
+    </CollapsibleSection>
   );
 }
 
