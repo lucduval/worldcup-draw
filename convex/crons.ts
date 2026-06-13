@@ -12,4 +12,13 @@ crons.interval(
   {},
 );
 
+// Keep live match odds fresh from odds-api.io. A 30-minute cadence is plenty for
+// pre-match lines and stays well within typical odds-feed quotas.
+crons.interval(
+  "sync world cup odds",
+  { minutes: 30 },
+  internal.results.syncOdds,
+  {},
+);
+
 export default crons;

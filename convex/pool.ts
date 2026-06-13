@@ -151,6 +151,42 @@ export function matchOdds(
   return { HOME: fairOdds(pHome), AWAY: fairOdds(pAway), DRAW: fairOdds(pDraw) };
 }
 
+// Per-outcome odds built from live market odds (already de-vigged to fair
+// decimal odds upstream in the sync). Mirrors `matchOdds`'s shape so betting can
+// swap sources transparently. Real market odds are used uncapped (no ODDS_MIN/MAX
+// clamp). For a knockout we only price HOME/AWAY, so the draw is dropped and the
+// two sides are renormalised to a fair 2-way line (1/p, p re-summed without draw).
+export function apiMatchOdds(
+  fair: { home: number; draw?: number; away: number },
+  isKnockout: boolean,
+): { HOME: number; AWAY: number; DRAW?: number } {
+  if (isKnockout) {
+    const pHome = 1 / fair.home;
+    const pAway = 1 / fair.away;
+    const s = pHome + pAway;
+    return { HOME: s / pHome, AWAY: s / pAway };
+  }
+  return { HOME: fair.home, AWAY: fair.away, DRAW: fair.draw };
+}
+
+// De-vig an averaged 1X2 market into fair decimal odds. Strips the bookmaker
+// margin (the implied probabilities sum to >1) so betting stays EV-neutral, then
+// returns 1/p per outcome. `draw` is optional — omit for a 2-way market.
+export function devig(
+  avg: { home: number; draw?: number; away: number },
+): { home: number; draw?: number; away: number } {
+  const pHome = 1 / avg.home;
+  const pAway = 1 / avg.away;
+  const pDraw = avg.draw != null ? 1 / avg.draw : 0;
+  const overround = pHome + pAway + pDraw;
+  if (!(overround > 0)) return avg; // degenerate input ⇒ pass through
+  return {
+    home: overround / pHome,
+    away: overround / pAway,
+    draw: avg.draw != null ? overround / pDraw : undefined,
+  };
+}
+
 // Clamp a host-chosen starting pot to a whole number in [0, STARTING_POT_MAX].
 export function clampStartingPot(pot: number | undefined): number {
   if (pot == null || !Number.isFinite(pot)) return STARTING_POT_DEFAULT;

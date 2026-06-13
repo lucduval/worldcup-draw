@@ -3,7 +3,7 @@ import { v } from "convex/values";
 import { Id, Doc } from "./_generated/dataModel";
 import { internal } from "./_generated/api";
 import { getAuthUserId } from "@convex-dev/auth/server";
-import { POOL } from "./pool";
+import { POOL, devig } from "./pool";
 import { computeBankroll } from "./betting";
 import { avatarUrls } from "./account";
 
@@ -203,6 +203,209 @@ export const upsertMatches = internalMutation({
         await ctx.db.insert("matches", m);
       }
     }
+  },
+});
+
+// ── Sync: pull live match odds from odds-api.io ──────────
+// Runs on a cron (see crons.ts). Lists the World Cup league, pulls the 1X2 (ML)
+// market for upcoming fixtures, averages across bookmakers, de-vigs to fair
+// odds, and stores them on the matching `matches` row (matched by canonical team
+// names + kickoff date, since the two feeds use different ids). No-ops quietly
+// without ODDS_API_KEY; any fixture left unpriced falls back to the rank model.
+const ODDS_API_BASE = "https://api.odds-api.io/v3";
+// odds-api.io requires an explicit bookmakers list and the current plan caps the
+// selection at these two. Odds are averaged across whichever of them priced a
+// fixture; widen this if the plan's allowed bookmakers change.
+const ODDS_BOOKMAKERS = "Bet365,Unibet";
+
+type MlLine = { home: string; draw?: string; away?: string };
+type OddsEvent = {
+  id: number;
+  home: string;
+  away: string;
+  date: string;
+  bookmakers?: Record<
+    string,
+    Array<{ name: string; updatedAt?: string; odds?: MlLine[] }>
+  >;
+};
+
+// Average the ML (match-result) line across every bookmaker that priced it.
+// Returns null when no bookmaker exposed a usable home/away pair.
+function averageMl(
+  bookmakers: OddsEvent["bookmakers"],
+): { home: number; draw?: number; away: number; updatedAt: number } | null {
+  if (!bookmakers) return null;
+  let homeSum = 0,
+    awaySum = 0,
+    drawSum = 0,
+    n = 0,
+    drawN = 0,
+    latest = 0;
+  for (const lines of Object.values(bookmakers)) {
+    const ml = lines.find((l) => l.name === "ML");
+    const line = ml?.odds?.[0];
+    if (!line) continue;
+    const home = Number(line.home);
+    const away = Number(line.away);
+    if (!(home > 1) || !(away > 1)) continue;
+    homeSum += home;
+    awaySum += away;
+    n += 1;
+    const draw = Number(line.draw);
+    if (draw > 1) {
+      drawSum += draw;
+      drawN += 1;
+    }
+    const ts = ml?.updatedAt ? Date.parse(ml.updatedAt) : NaN;
+    if (Number.isFinite(ts) && ts > latest) latest = ts;
+  }
+  if (n === 0) return null;
+  return {
+    home: homeSum / n,
+    away: awaySum / n,
+    draw: drawN > 0 ? drawSum / drawN : undefined,
+    updatedAt: latest,
+  };
+}
+
+export const syncOdds = internalAction({
+  args: {},
+  handler: async (ctx) => {
+    const key = process.env.ODDS_API_KEY;
+    if (!key) {
+      console.log("ODDS_API_KEY not set - skipping odds sync.");
+      return;
+    }
+
+    // 1. Find the World Cup league slug (exclude qualifiers, women's, youth).
+    const lgRes = await fetch(
+      `${ODDS_API_BASE}/leagues?apiKey=${key}&sport=football`,
+    );
+    if (!lgRes.ok) {
+      console.error(`odds-api leagues failed: ${lgRes.status}`);
+      return;
+    }
+    const leagues = (await lgRes.json()) as Array<{
+      name: string;
+      slug: string;
+      eventsCount?: number;
+    }>;
+    const wc = leagues
+      .filter((l) => {
+        const n = l.name.toLowerCase();
+        return (
+          n.includes("world cup") &&
+          !n.includes("qualif") &&
+          !n.includes("women") &&
+          !/\bu-?\d/.test(n) &&
+          !n.includes("club")
+        );
+      })
+      .sort((a, b) => (b.eventsCount ?? 0) - (a.eventsCount ?? 0))[0];
+    if (!wc) {
+      console.log("odds-api: no World Cup league found - skipping odds sync.");
+      return;
+    }
+
+    // 2. List upcoming fixtures for that league (defaults to the next 14 days).
+    const evRes = await fetch(
+      `${ODDS_API_BASE}/events?apiKey=${key}&sport=football&league=${wc.slug}`,
+    );
+    if (!evRes.ok) {
+      console.error(`odds-api events failed: ${evRes.status}`);
+      return;
+    }
+    const events = (await evRes.json()) as OddsEvent[];
+    if (events.length === 0) {
+      console.log(`odds-api: no upcoming ${wc.slug} fixtures.`);
+      return;
+    }
+
+    // 3. Pull odds in batches of 10 (the multi endpoint counts as one request),
+    //    average + de-vig each, and shape a row keyed by canonical names + date.
+    const rows: Array<{
+      homeTeam: string;
+      awayTeam: string;
+      date: string;
+      oddsHome: number;
+      oddsDraw?: number;
+      oddsAway: number;
+      oddsUpdatedAt: number;
+    }> = [];
+    for (let i = 0; i < events.length; i += 10) {
+      const batch = events.slice(i, i + 10);
+      const ids = batch.map((e) => e.id).join(",");
+      const oddsRes = await fetch(
+        `${ODDS_API_BASE}/odds/multi?apiKey=${key}&eventIds=${ids}&bookmakers=${ODDS_BOOKMAKERS}`,
+      );
+      if (!oddsRes.ok) {
+        console.error(`odds-api odds failed: ${oddsRes.status}`);
+        continue;
+      }
+      const body = (await oddsRes.json()) as unknown;
+      const priced: OddsEvent[] = Array.isArray(body)
+        ? (body as OddsEvent[])
+        : (((body as { events?: OddsEvent[]; data?: OddsEvent[] }).events ??
+            (body as { data?: OddsEvent[] }).data ??
+            [body as OddsEvent]) as OddsEvent[]);
+      for (const ev of priced) {
+        const avg = averageMl(ev.bookmakers);
+        if (!avg) continue;
+        const fair = devig({ home: avg.home, draw: avg.draw, away: avg.away });
+        rows.push({
+          homeTeam: canonicalTeam(ev.home),
+          awayTeam: canonicalTeam(ev.away),
+          date: ev.date,
+          oddsHome: fair.home,
+          oddsDraw: fair.draw,
+          oddsAway: fair.away,
+          oddsUpdatedAt: avg.updatedAt,
+        });
+      }
+    }
+
+    await ctx.runMutation(internal.results.upsertOdds, { rows });
+    console.log(`Synced odds for ${rows.length}/${events.length} fixtures.`);
+  },
+});
+
+const oddsRowValidator = v.object({
+  homeTeam: v.string(),
+  awayTeam: v.string(),
+  date: v.string(),
+  oddsHome: v.number(),
+  oddsDraw: v.optional(v.number()),
+  oddsAway: v.number(),
+  oddsUpdatedAt: v.number(),
+});
+
+// Patch fair odds onto the matching `matches` row. The two feeds share no id, so
+// we match on canonical team names + same UTC calendar day (a pairing is unique
+// within a day). Fixtures we can't match are simply skipped (model fallback).
+export const upsertOdds = internalMutation({
+  args: { rows: v.array(oddsRowValidator) },
+  handler: async (ctx, { rows }) => {
+    const matches = await ctx.db.query("matches").collect();
+    const dayOf = (iso: string) => iso.slice(0, 10); // YYYY-MM-DD
+    let patched = 0;
+    for (const r of rows) {
+      const m = matches.find(
+        (x) =>
+          x.homeTeam === r.homeTeam &&
+          x.awayTeam === r.awayTeam &&
+          dayOf(x.utcDate) === dayOf(r.date),
+      );
+      if (!m) continue;
+      await ctx.db.patch(m._id, {
+        oddsHome: r.oddsHome,
+        oddsDraw: r.oddsDraw,
+        oddsAway: r.oddsAway,
+        oddsUpdatedAt: r.oddsUpdatedAt,
+      });
+      patched += 1;
+    }
+    console.log(`Odds upsert: matched ${patched}/${rows.length} fixtures.`);
   },
 });
 

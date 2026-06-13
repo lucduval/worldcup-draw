@@ -266,6 +266,8 @@ button.shead:hover .shead-chev{color:var(--ink)}
 .btn:hover:not(:disabled){transform:scale(1.02)}
 .btn:disabled{opacity:.45;cursor:not-allowed}
 .btn.ghost{background:transparent;border:1px solid var(--line);color:var(--ink)}
+.btn.danger{background:transparent;border:1px solid #e7c4c1;color:#b3261e}
+.btn.danger:hover:not(:disabled){border-color:#b3261e;background:#fbeceb}
 .btn.dark{background:var(--ink);color:#fff}
 .btn.big{padding:18px 26px;font-size:17px}
 .err{color:var(--accent);font-size:13px;margin-top:10px;min-height:18px}
@@ -894,12 +896,13 @@ footer{text-align:center;color:var(--ink);font-weight:400;font-size:12px;padding
 }
 
 /* ── Betting ─────────────────────────────────────────────── */
-/* Host pot control: slider + number input, with the live impact label. */
-.pot-control{display:flex;flex-direction:column;gap:6px}
+/* Host pot control: number input above, full-width slider below, then the
+   live impact label. Stacked layout keeps it tidy on mobile. */
+.pot-control{display:flex;flex-direction:column;gap:12px}
 .pot-row{display:flex;align-items:center;gap:12px}
-.pot-row input[type=range]{flex:1;accent-color:var(--accent)}
+.pot-slider{width:100%;accent-color:var(--accent)}
 .pot-value{font-weight:600;color:var(--ink);min-width:52px;font-variant-numeric:tabular-nums}
-.pot-num{width:64px;padding:8px 10px;border:1px solid var(--line);border-radius:10px;
+.pot-num{flex:1;padding:8px 10px;border:1px solid var(--line);border-radius:10px;
   background:var(--card);color:var(--ink);font-family:'Outfit';font-size:16px}
 .pot-impact{margin-bottom:0;color:var(--muted)}
 .pot-host-label{font-weight:600;color:var(--ink);font-size:14px}
@@ -996,17 +999,21 @@ footer{text-align:center;color:var(--ink);font-weight:400;font-size:12px;padding
 
 /* Bettable fixtures. */
 .bet-matches{display:flex;flex-direction:column;gap:12px}
-.bet-showall-btn{margin-top:12px;width:100%;background:transparent;border:1px dashed var(--line);
+.bet-reveal-row{display:flex;gap:8px;margin-top:12px}
+.bet-showall-btn{flex:1;background:transparent;border:1px dashed var(--line);
   border-radius:11px;padding:10px;color:var(--muted);font-family:'Outfit';font-size:13px;
   font-weight:600;cursor:pointer}
 .bet-showall-btn:hover{color:var(--ink);border-color:var(--muted)}
+.bet-showall-btn.ghost{flex:0 0 auto;padding:10px 18px}
 .bet-match{background:var(--card);border:1px solid var(--line);border-radius:13px;padding:14px;
   display:flex;flex-direction:column;gap:10px}
 .bm-teams{display:flex;align-items:center;gap:10px;font-weight:600;color:var(--ink)}
 .bm-team{display:inline-flex;align-items:center;gap:6px}
 .bm-team.away{margin-left:auto}
 .bm-v{color:var(--muted);font-weight:500}
-.bm-meta{font-size:12px;color:var(--muted)}
+.bm-meta{font-size:12px;color:var(--muted);display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.bm-live{display:inline-flex;align-items:center;gap:4px;font-weight:600;color:var(--pitch);
+  font-size:11px;letter-spacing:.3px}
 .bm-odds{display:flex;gap:8px}
 .odd-btn{flex:1;display:flex;flex-direction:column;align-items:center;gap:2px;padding:9px 6px;
   background:#faf8f3;border:1px solid var(--line);border-radius:11px;cursor:pointer;
@@ -1036,7 +1043,23 @@ footer{text-align:center;color:var(--ink);font-weight:400;font-size:12px;padding
 .br-result.won{color:var(--tier1)}
 .br-result.lost{color:var(--accent)}
 
+/* Host's room-wide bet-visibility switch (reuses .timer-switch markup) */
+.bet-visibility-row{display:flex;align-items:center;justify-content:space-between;gap:12px;
+  margin-bottom:18px;padding:12px 14px;background:var(--card);border:1px solid var(--line);border-radius:13px}
+.bet-visibility-text{display:flex;flex-direction:column;gap:3px;min-width:0}
+.bet-visibility-label{font-weight:600;font-size:14px}
+.bet-visibility-note{font-size:12px;color:var(--muted)}
+
+/* "Everyone's bets" - one group per player when the host has made bets public */
+.bet-everyone{display:flex;flex-direction:column;gap:16px}
+.bet-player-group{display:flex;flex-direction:column;gap:8px}
+.bpg-name{display:flex;align-items:center;gap:8px;font-weight:600;color:var(--ink);font-size:14px}
+.bpg-you{font-size:10px;letter-spacing:.5px;text-transform:uppercase;color:var(--muted);
+  background:#ece7dd;border-radius:999px;padding:2px 8px;font-weight:600}
+
 @media (max-width:560px){
   .bank-num{font-size:19px}
   .br-match{flex-basis:100%}
+  .bet-visibility-row{align-items:flex-start}
+  .bet-visibility-row .timer-switch{flex-shrink:0}
 }

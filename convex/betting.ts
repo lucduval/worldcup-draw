@@ -2,7 +2,13 @@ import { mutation, query, QueryCtx, MutationCtx } from "./_generated/server";
 import { v } from "convex/values";
 import { Id, Doc } from "./_generated/dataModel";
 import { getAuthUserId } from "@convex-dev/auth/server";
-import { POOL, RANK_BY_NAME, matchOdds, type BetPick } from "./pool";
+import {
+  POOL,
+  RANK_BY_NAME,
+  matchOdds,
+  apiMatchOdds,
+  type BetPick,
+} from "./pool";
 
 // Flag lookup for the canonical pool names stored on matches.
 const FLAG_BY_NAME: Record<string, string> = Object.fromEntries(
@@ -27,6 +33,30 @@ function ranksFor(
   const awayRank = RANK_BY_NAME[m.awayTeam];
   if (homeRank === undefined || awayRank === undefined) return null;
   return { homeRank, awayRank };
+}
+
+// Odds for a match: prefer the live market odds synced onto the match (de-vigged
+// to fair odds in results.ts), falling back to the rank-based model when the feed
+// hasn't priced this fixture. `live` flags which source was used so the client
+// can label market odds. Single source of truth for both display and placement.
+function oddsForMatch(
+  m: Doc<"matches">,
+  ranks: { homeRank: number; awayRank: number },
+  isKnockout: boolean,
+): { odds: { HOME: number; AWAY: number; DRAW?: number }; live: boolean } {
+  if (m.oddsHome != null && m.oddsAway != null) {
+    return {
+      odds: apiMatchOdds(
+        { home: m.oddsHome, draw: m.oddsDraw, away: m.oddsAway },
+        isKnockout,
+      ),
+      live: true,
+    };
+  }
+  return {
+    odds: matchOdds(ranks.homeRank, ranks.awayRank, isKnockout),
+    live: false,
+  };
 }
 
 // ── Derived bankroll ─────────────────────────────────────────────────────────
@@ -138,7 +168,7 @@ export const bettableMatches = query({
       const ranks = ranksFor(m);
       if (!ranks) continue; // unrankable team ⇒ not bettable
       const isKnockout = m.stage !== "GROUP_STAGE";
-      const odds = matchOdds(ranks.homeRank, ranks.awayRank, isKnockout);
+      const { odds, live } = oddsForMatch(m, ranks, isKnockout);
       const mine = myBetByMatch.get(m.extId);
       out.push({
         matchExtId: m.extId,
@@ -151,6 +181,7 @@ export const bettableMatches = query({
         homeFlag: FLAG_BY_NAME[m.homeTeam] ?? "🏳️",
         awayFlag: FLAG_BY_NAME[m.awayTeam] ?? "🏳️",
         odds,
+        live,
         myBet: mine
           ? { pick: mine.pick, stake: mine.stake, odds: mine.odds }
           : null,
@@ -238,7 +269,99 @@ export const myBets = query({
   },
 });
 
+// Everyone's bets, grouped by player, for a room with public betting turned on.
+// Returns null when betting is off, the viewer isn't a member, or the host has
+// not made bets public — so the client renders the section only when it should.
+// Unlike the private queries this deliberately exposes every player's pick,
+// stake and odds (the host opted the whole room into transparency).
+export const roomBets = query({
+  args: { code: v.string() },
+  handler: async (ctx, { code }) => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) return null;
+    const seat = await viewerSeat(ctx, code, userId);
+    if (!seat || !bettingOpen(seat.room)) return null;
+    if (!seat.room.betsPublic) return null;
+
+    const players = await ctx.db
+      .query("players")
+      .withIndex("by_room", (q) => q.eq("roomId", seat.room._id))
+      .collect();
+    const nameById = new Map(players.map((p) => [p._id, p.name]));
+
+    const bets = await ctx.db
+      .query("bets")
+      .withIndex("by_room", (q) => q.eq("roomId", seat.room._id))
+      .collect();
+    const matches = await ctx.db.query("matches").collect();
+    const matchByExtId = new Map(matches.map((m) => [m.extId, m]));
+
+    // One group per player who has placed at least one bet.
+    const groups = new Map<
+      Id<"players">,
+      { playerId: Id<"players">; name: string; isMe: boolean; bets: any[] }
+    >();
+    for (const b of bets) {
+      const m = matchByExtId.get(b.matchExtId);
+      const finished = m ? isFinished(m) : false;
+      const won = finished && b.pick === m!.winner;
+      const potentialReturn = Math.round(b.stake * b.odds);
+      const row = {
+        matchExtId: b.matchExtId,
+        pick: b.pick,
+        stake: b.stake,
+        odds: b.odds,
+        placedAt: b.placedAt,
+        potentialReturn,
+        homeTeam: m?.homeTeam ?? "—",
+        awayTeam: m?.awayTeam ?? "—",
+        homeFlag: m ? (FLAG_BY_NAME[m.homeTeam] ?? "🏳️") : "🏳️",
+        awayFlag: m ? (FLAG_BY_NAME[m.awayTeam] ?? "🏳️") : "🏳️",
+        status: m?.status ?? "SCHEDULED",
+        winner: m?.winner ?? null,
+        open: !finished,
+        settledNet: finished ? (won ? potentialReturn - b.stake : -b.stake) : 0,
+        won: finished ? won : null,
+      };
+      let g = groups.get(b.playerId);
+      if (!g) {
+        g = {
+          playerId: b.playerId,
+          name: nameById.get(b.playerId) ?? "Player",
+          isMe: b.playerId === seat.me._id,
+          bets: [],
+        };
+        groups.set(b.playerId, g);
+      }
+      g.bets.push(row);
+    }
+
+    const out = [...groups.values()];
+    for (const g of out) g.bets.sort((a, b) => b.placedAt - a.placedAt);
+    // Viewer first, then alphabetical, so each player finds their own row fast.
+    out.sort((a, b) =>
+      a.isMe === b.isMe ? a.name.localeCompare(b.name) : a.isMe ? -1 : 1,
+    );
+    return out;
+  },
+});
+
 // ── Mutations ──────────────────────────────────────────────────────────────────
+
+// Host-only switch for room-wide bet visibility. When on, `roomBets` exposes
+// every player's bets to every member; when off, bets are private again. Allowed
+// on any `done` room with betting on (the betting layer's lifecycle).
+export const setBetsPublic = mutation({
+  args: { code: v.string(), value: v.boolean() },
+  handler: async (ctx, { code, value }) => {
+    const userId = await requireUser(ctx);
+    const seat = await viewerSeat(ctx, code, userId);
+    if (!seat) throw new Error("You're not in this game.");
+    if (seat.room.hostId !== userId)
+      throw new Error("Only the host can change bet visibility.");
+    await ctx.db.patch(seat.room._id, { betsPublic: value });
+  },
+});
 
 // Place or replace a bet on a match. Identity is server-derived; odds are priced
 // and snapshotted now. One bet per (room, player, match): an existing bet on the
@@ -297,7 +420,7 @@ export const placeBet = mutation({
         `Stake exceeds your available bankroll (${available}).`,
       );
 
-    const odds = matchOdds(ranks.homeRank, ranks.awayRank, isKnockout);
+    const { odds } = oddsForMatch(match, ranks, isKnockout);
     const chosen = odds[pick];
     if (chosen === undefined) throw new Error("That outcome isn't available.");
 

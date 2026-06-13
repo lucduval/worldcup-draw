@@ -91,18 +91,6 @@ function PotControl({
           {draft === 0 ? "Off" : `${draft} pts`}
         </span>
         <input
-          type="range"
-          min={0}
-          max={STARTING_POT_MAX}
-          step={1}
-          value={draft}
-          disabled={busy}
-          onChange={(e) => setDraft(Number(e.target.value))}
-          onPointerUp={(e) => commit(Number(e.currentTarget.value))}
-          onKeyUp={(e) => commit(Number(e.currentTarget.value))}
-          aria-label="Starting betting pot"
-        />
-        <input
           type="number"
           className="pot-num"
           min={0}
@@ -117,6 +105,19 @@ function PotControl({
           }}
         />
       </div>
+      <input
+        type="range"
+        className="pot-slider"
+        min={0}
+        max={STARTING_POT_MAX}
+        step={1}
+        value={draft}
+        disabled={busy}
+        onChange={(e) => setDraft(Number(e.target.value))}
+        onPointerUp={(e) => commit(Number(e.currentTarget.value))}
+        onKeyUp={(e) => commit(Number(e.currentTarget.value))}
+        aria-label="Starting betting pot"
+      />
       <p className="hint pot-impact">💰 {potImpact(draft)}</p>
       {note && <p className="hint">{note}</p>}
     </div>
@@ -507,9 +508,11 @@ function GamesList({
         </div>
       </div>
 
-      <button className="leave" onClick={onExit}>
-        ← Back to menu
-      </button>
+      <nav className="page-nav" aria-label="Leave page">
+        <button type="button" className="nav-btn" onClick={onExit}>
+          ← Back to menu
+        </button>
+      </nav>
     </>
   );
 }
@@ -541,6 +544,7 @@ function Room({
   const setMode = useMutation(api.rooms.setMode);
   const setTimer = useMutation(api.rooms.setTimer);
   const setPot = useMutation(api.rooms.setPot);
+  const setBetsPublic = useMutation(api.betting.setBetsPublic);
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState(false);
   const [hostSettingsOpen, setHostSettingsOpen] = useState(false);
@@ -634,6 +638,15 @@ function Room({
       await setPot({ code: room.code, startingPot: pot });
     } catch (e: any) {
       setErr(e.message ?? "Could not change the betting pot.");
+    }
+  }
+
+  async function handleSetBetsPublic(value: boolean) {
+    setErr("");
+    try {
+      await setBetsPublic({ code: room.code, value });
+    } catch (e: any) {
+      setErr(e.message ?? "Could not change bet visibility.");
     }
   }
 
@@ -892,19 +905,19 @@ function Room({
             )}
             {isHost && !isAsync && players.length >= 2 && (
               <button
-                className="leave"
+                className="btn ghost"
                 onClick={handleAutoAllocate}
                 disabled={busy}
-                style={{ textDecoration: "underline", marginTop: 8 }}
+                style={{ marginTop: 10 }}
               >
                 Host: skip the draw & auto-allocate everyone
               </button>
             )}
             {isHost && (
               <button
-                className="leave danger"
+                className="btn danger"
                 onClick={handleDelete}
-                style={{ textDecoration: "underline", marginTop: 8 }}
+                style={{ marginTop: 10 }}
               >
                 Host: delete game
               </button>
@@ -1207,7 +1220,17 @@ function Room({
       )}
 
       {/* Betting - real-match wagers against each player's bankroll */}
-      {done && startingPot > 0 && <BettingSection code={room.code} />}
+      {done && startingPot > 0 && (
+        <BettingSection
+          code={room.code}
+          isHost={room.hostId === viewerId}
+          betsPublic={room.betsPublic ?? false}
+        />
+      )}
+
+      {/* Once the draw is locked, fixtures are the headline - surface them
+          above the pools and left-out lists. */}
+      {done && <Fixtures myTeams={myTeams} owners={teamOwners} />}
 
       {/* Tier pools */}
       <CollapsibleSection
@@ -1285,16 +1308,19 @@ function Room({
         );
       })()}
 
-      <Fixtures myTeams={myTeams} owners={teamOwners} />
+      {/* Before lock, fixtures sit below the pools (shown here only). */}
+      {!done && <Fixtures myTeams={myTeams} owners={teamOwners} />}
 
       {isHost && hostSettingsOpen && (
         <HostSettingsModal
           done={done}
           startingPot={startingPot}
+          betsPublic={room.betsPublic ?? false}
           busy={busy}
           potLocked={potLocked}
           err={err}
           onSetPot={handleSetPot}
+          onSetBetsPublic={handleSetBetsPublic}
           onReset={handleReset}
           onDelete={handleDelete}
           onClose={() => setHostSettingsOpen(false)}
@@ -1336,20 +1362,24 @@ function BackNav({
 function HostSettingsModal({
   done,
   startingPot,
+  betsPublic,
   busy,
   potLocked,
   err,
   onSetPot,
+  onSetBetsPublic,
   onReset,
   onDelete,
   onClose,
 }: {
   done: boolean;
   startingPot: number;
+  betsPublic: boolean;
   busy: boolean;
   potLocked: boolean;
   err: string;
   onSetPot: (pot: number) => void;
+  onSetBetsPublic: (value: boolean) => void;
   onReset: () => void;
   onDelete: () => void;
   onClose: () => void;
@@ -1411,6 +1441,36 @@ function HostSettingsModal({
             </p>
           )}
         </div>
+
+        {done && startingPot > 0 && (
+          <div className="host-modal-block">
+            <div className="bet-visibility-row">
+              <div className="bet-visibility-text">
+                <span className="bet-visibility-label">
+                  👀 Show everyone’s bets
+                </span>
+                <span className="bet-visibility-note">
+                  {betsPublic
+                    ? "Everyone can see each player’s picks, stakes and odds."
+                    : "Bets are private — each player only sees their own."}
+                </span>
+              </div>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={betsPublic}
+                className={`timer-switch${betsPublic ? " on" : ""}`}
+                disabled={busy}
+                onClick={() => onSetBetsPublic(!betsPublic)}
+              >
+                <span className="knob" />
+                <span className="timer-switch-text">
+                  {betsPublic ? "On" : "Off"}
+                </span>
+              </button>
+            </div>
+          </div>
+        )}
 
         <div className="host-modal-block">
           <div className="host-modal-block-title">Danger zone</div>
@@ -1549,28 +1609,45 @@ function fixtureDay(utcDate: string): string {
   });
 }
 
-function BettingSection({ code }: { code: string }) {
+function BettingSection({
+  code,
+  isHost,
+  betsPublic,
+}: {
+  code: string;
+  isHost: boolean;
+  betsPublic: boolean;
+}) {
   const bankroll = useQuery(api.betting.myBankroll, { code });
   const matches = useQuery(api.betting.bettableMatches, { code });
   const bets = useQuery(api.betting.myBets, { code });
+  // Only fetched/populated by the server when the host has made bets public.
+  const roomBets = useQuery(api.betting.roomBets, { code });
   const placeBet = useMutation(api.betting.placeBet);
   const cancelBet = useMutation(api.betting.cancelBet);
+  const setBetsPublic = useMutation(api.betting.setBetsPublic);
   const [err, setErr] = useState("");
   // Fixtures are long-ranging, so default to just the soonest matchday and let
-  // the player expand to the full list.
-  const [showAll, setShowAll] = useState(false);
+  // the player reveal further fixtures a few at a time. `extra` counts how many
+  // fixtures beyond that base matchday the player has chosen to reveal.
+  const REVEAL_STEP = 5;
+  const [extra, setExtra] = useState(0);
 
   const available = bankroll?.available ?? 0;
 
   // `matches` is server-sorted by utcDate, so the first entry's day is the next
-  // matchday; collapse to only that day unless the player asks for everything.
+  // matchday. The base view is just that day's fixtures (contiguous at the
+  // front); `extra` reveals the following fixtures in steps of REVEAL_STEP.
   const nextDay = matches?.[0] ? fixtureDay(matches[0].utcDate) : null;
+  const baseCount = matches
+    ? matches.filter((m) => fixtureDay(m.utcDate) === nextDay).length
+    : 0;
+  const visibleCount = baseCount + extra;
   const shownMatches =
-    matches === undefined || showAll
-      ? matches
-      : matches.filter((m) => fixtureDay(m.utcDate) === nextDay);
-  const hiddenCount =
-    matches && shownMatches ? matches.length - shownMatches.length : 0;
+    matches === undefined ? matches : matches.slice(0, visibleCount);
+  const hiddenCount = matches ? Math.max(0, matches.length - visibleCount) : 0;
+  // How many the next reveal will add (the final step may be a short one).
+  const nextChunk = Math.min(REVEAL_STEP, hiddenCount);
 
   async function handlePlace(matchExtId: number, pick: BetPick, stake: number) {
     setErr("");
@@ -1587,6 +1664,15 @@ function BettingSection({ code }: { code: string }) {
       await cancelBet({ code, matchExtId });
     } catch (e: any) {
       setErr(e.message ?? "Could not cancel the bet.");
+    }
+  }
+
+  async function handleToggleVisibility() {
+    setErr("");
+    try {
+      await setBetsPublic({ code, value: !betsPublic });
+    } catch (e: any) {
+      setErr(e.message ?? "Could not change bet visibility.");
     }
   }
 
@@ -1618,11 +1704,34 @@ function BettingSection({ code }: { code: string }) {
         </div>
       )}
 
+      {isHost && (
+        <div className="bet-visibility-row">
+          <div className="bet-visibility-text">
+            <span className="bet-visibility-label">👀 Show everyone’s bets</span>
+            <span className="bet-visibility-note">
+              {betsPublic
+                ? "Everyone can see each player’s picks, stakes and odds."
+                : "Bets are private — only you see your own."}
+            </span>
+          </div>
+          <button
+            type="button"
+            role="switch"
+            aria-checked={betsPublic}
+            className={`timer-switch${betsPublic ? " on" : ""}`}
+            onClick={handleToggleVisibility}
+          >
+            <span className="knob" />
+            <span className="timer-switch-text">{betsPublic ? "On" : "Off"}</span>
+          </button>
+        </div>
+      )}
+
       {err && <div className="err">{err}</div>}
 
       <h4 className="bet-subhead">
         Bettable fixtures
-        {!showAll && nextDay && shownMatches && shownMatches.length > 0 && (
+        {extra === 0 && nextDay && shownMatches && shownMatches.length > 0 && (
           <span className="bet-subhead-note"> · {nextDay}</span>
         )}
       </h4>
@@ -1646,16 +1755,29 @@ function BettingSection({ code }: { code: string }) {
               />
             ))}
           </div>
-          {(showAll || hiddenCount > 0) && (
-            <button
-              type="button"
-              className="bet-showall-btn"
-              onClick={() => setShowAll((v) => !v)}
-            >
-              {showAll
-                ? "Show next matchday only"
-                : `Show all fixtures (${hiddenCount} more)`}
-            </button>
+          {(hiddenCount > 0 || extra > 0) && (
+            <div className="bet-reveal-row">
+              {hiddenCount > 0 && (
+                <button
+                  type="button"
+                  className="bet-showall-btn"
+                  onClick={() =>
+                    setExtra((e) => Math.min(e + REVEAL_STEP, matches.length))
+                  }
+                >
+                  Show next {nextChunk} fixture{nextChunk === 1 ? "" : "s"}
+                </button>
+              )}
+              {extra > 0 && (
+                <button
+                  type="button"
+                  className="bet-showall-btn ghost"
+                  onClick={() => setExtra(0)}
+                >
+                  Hide
+                </button>
+              )}
+            </div>
           )}
         </>
       )}
@@ -1666,6 +1788,27 @@ function BettingSection({ code }: { code: string }) {
           <div className="bet-list">
             {bets.map((b) => (
               <MyBetRow key={b.matchExtId} b={b} />
+            ))}
+          </div>
+        </>
+      )}
+
+      {betsPublic && roomBets && roomBets.length > 0 && (
+        <>
+          <h4 className="bet-subhead">Everyone’s bets</h4>
+          <div className="bet-everyone">
+            {roomBets.map((g) => (
+              <div key={g.playerId} className="bet-player-group">
+                <div className="bpg-name">
+                  {g.name}
+                  {g.isMe && <span className="bpg-you">you</span>}
+                </div>
+                <div className="bet-list">
+                  {g.bets.map((b) => (
+                    <MyBetRow key={b.matchExtId} b={b} />
+                  ))}
+                </div>
+              </div>
             ))}
           </div>
         </>
@@ -1725,7 +1868,14 @@ function BetRow({
           <span className="flag">{m.awayFlag}</span>
         </span>
       </div>
-      <div className="bm-meta">{kickoff}</div>
+      <div className="bm-meta">
+        {kickoff}
+        {m.live && (
+          <span className="bm-live" title="Live market odds, averaged across bookmakers">
+            ● Live odds
+          </span>
+        )}
+      </div>
       <div className="bm-odds">
         {outcomes.map((o) => {
           const odd = m.odds[o] as number;
