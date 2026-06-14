@@ -1072,6 +1072,9 @@ footer{text-align:center;color:var(--ink);font-weight:400;font-size:12px;padding
 @media (max-width:560px){
   .bank-num{font-size:19px}
   .br-match{flex-basis:100%}
-  .bet-visibility-row{align-items:flex-start}
-  .bet-visibility-row .timer-switch{flex-shrink:0}
+  /* Stack the label above a full-width selector so the note isn't squished
+     into a narrow column beside it. */
+  .bet-visibility-row{flex-direction:column;align-items:stretch}
+  .bet-vis-seg{display:flex;width:100%}
+  .bet-vis-seg-btn{flex:1;text-align:center;padding:9px 8px}
 }
