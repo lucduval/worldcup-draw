@@ -48,11 +48,19 @@ export default defineSchema({
     // Optional so pre-existing rooms read as "betting off" (undefined ⇒ 0) and
     // never silently gain the feature. New rooms default to STARTING_POT_DEFAULT.
     startingPot: v.optional(v.number()),
-    // Host-toggled bet visibility. When true, every player can see every other
-    // player's bets (pick, stake and odds) via `roomBets`; when false/undefined
-    // bets stay private (each query only ever returns the viewer's own). Off by
-    // default so pre-existing rooms keep the original private-read behaviour.
+    // Legacy host-toggled bet visibility (superseded by `betVisibility`). Kept
+    // for backward-compatible reads: `betVisibilityOf` falls back to it (public
+    // when true, hidden otherwise) for rooms created before `betVisibility`.
     betsPublic: v.optional(v.boolean()),
+    // Host-chosen three-way bet visibility (see `betVisibilityOf`):
+    //   "hidden"  bets are private — each player only sees their own.
+    //   "live"    a player's bet on a match is exposed to everyone once that
+    //             match has kicked off, and stays visible after it finishes.
+    //   "public"  every bet is visible to everyone immediately.
+    // Optional so pre-existing rooms fall back to the legacy `betsPublic` flag.
+    betVisibility: v.optional(
+      v.union(v.literal("hidden"), v.literal("live"), v.literal("public")),
+    ),
     turnOrder: v.array(v.id("players")), // set when the game starts
     pickIndex: v.number(), // how many picks have been made
     // Live-mode turn timer (host-toggled, see setTimer). When `timerEnabled`,

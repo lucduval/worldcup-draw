@@ -544,7 +544,7 @@ function Room({
   const setMode = useMutation(api.rooms.setMode);
   const setTimer = useMutation(api.rooms.setTimer);
   const setPot = useMutation(api.rooms.setPot);
-  const setBetsPublic = useMutation(api.betting.setBetsPublic);
+  const setBetVisibility = useMutation(api.betting.setBetVisibility);
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState(false);
   const [hostSettingsOpen, setHostSettingsOpen] = useState(false);
@@ -641,10 +641,10 @@ function Room({
     }
   }
 
-  async function handleSetBetsPublic(value: boolean) {
+  async function handleSetBetVisibility(mode: BetVisibility) {
     setErr("");
     try {
-      await setBetsPublic({ code: room.code, value });
+      await setBetVisibility({ code: room.code, mode });
     } catch (e: any) {
       setErr(e.message ?? "Could not change bet visibility.");
     }
@@ -1224,7 +1224,7 @@ function Room({
         <BettingSection
           code={room.code}
           isHost={room.hostId === viewerId}
-          betsPublic={room.betsPublic ?? false}
+          betVisibility={roomBetVisibility(room)}
         />
       )}
 
@@ -1315,12 +1315,12 @@ function Room({
         <HostSettingsModal
           done={done}
           startingPot={startingPot}
-          betsPublic={room.betsPublic ?? false}
+          betVisibility={roomBetVisibility(room)}
           busy={busy}
           potLocked={potLocked}
           err={err}
           onSetPot={handleSetPot}
-          onSetBetsPublic={handleSetBetsPublic}
+          onSetBetVisibility={handleSetBetVisibility}
           onReset={handleReset}
           onDelete={handleDelete}
           onClose={() => setHostSettingsOpen(false)}
@@ -1362,24 +1362,24 @@ function BackNav({
 function HostSettingsModal({
   done,
   startingPot,
-  betsPublic,
+  betVisibility,
   busy,
   potLocked,
   err,
   onSetPot,
-  onSetBetsPublic,
+  onSetBetVisibility,
   onReset,
   onDelete,
   onClose,
 }: {
   done: boolean;
   startingPot: number;
-  betsPublic: boolean;
+  betVisibility: BetVisibility;
   busy: boolean;
   potLocked: boolean;
   err: string;
   onSetPot: (pot: number) => void;
-  onSetBetsPublic: (value: boolean) => void;
+  onSetBetVisibility: (mode: BetVisibility) => void;
   onReset: () => void;
   onDelete: () => void;
   onClose: () => void;
@@ -1444,31 +1444,11 @@ function HostSettingsModal({
 
         {done && startingPot > 0 && (
           <div className="host-modal-block">
-            <div className="bet-visibility-row">
-              <div className="bet-visibility-text">
-                <span className="bet-visibility-label">
-                  👀 Show everyone’s bets
-                </span>
-                <span className="bet-visibility-note">
-                  {betsPublic
-                    ? "Everyone can see each player’s picks, stakes and odds."
-                    : "Bets are private — each player only sees their own."}
-                </span>
-              </div>
-              <button
-                type="button"
-                role="switch"
-                aria-checked={betsPublic}
-                className={`timer-switch${betsPublic ? " on" : ""}`}
-                disabled={busy}
-                onClick={() => onSetBetsPublic(!betsPublic)}
-              >
-                <span className="knob" />
-                <span className="timer-switch-text">
-                  {betsPublic ? "On" : "Off"}
-                </span>
-              </button>
-            </div>
+            <BetVisibilityControl
+              value={betVisibility}
+              busy={busy}
+              onChange={onSetBetVisibility}
+            />
           </div>
         )}
 
@@ -1593,6 +1573,63 @@ type BettableMatch = FunctionReturnType<
 >[number];
 type MyBet = FunctionReturnType<typeof api.betting.myBets>[number];
 
+// Host-chosen bet visibility (mirrors the server union in convex/betting.ts).
+type BetVisibility = "hidden" | "live" | "public";
+
+// Effective visibility for a room, falling back to the legacy `betsPublic`
+// boolean for rooms created before the three-way `betVisibility` field.
+function roomBetVisibility(room: RoomData["room"]): BetVisibility {
+  return room.betVisibility ?? (room.betsPublic ? "public" : "hidden");
+}
+
+const BET_VISIBILITY_OPTIONS: { mode: BetVisibility; label: string }[] = [
+  { mode: "hidden", label: "Hidden" },
+  { mode: "live", label: "When live" },
+  { mode: "public", label: "Public" },
+];
+
+const BET_VISIBILITY_NOTE: Record<BetVisibility, string> = {
+  hidden: "Bets are private — each player only sees their own.",
+  live: "Each player’s bet is revealed to everyone once its match kicks off.",
+  public: "Everyone can see each player’s picks, stakes and odds.",
+};
+
+// Host control for the room's three-way bet visibility, used both in the
+// betting panel and the host-settings modal. Segmented selector + a note that
+// explains the active mode.
+function BetVisibilityControl({
+  value,
+  busy,
+  onChange,
+}: {
+  value: BetVisibility;
+  busy?: boolean;
+  onChange: (mode: BetVisibility) => void;
+}) {
+  return (
+    <div className="bet-visibility-row">
+      <div className="bet-visibility-text">
+        <span className="bet-visibility-label">👀 Show everyone’s bets</span>
+        <span className="bet-visibility-note">{BET_VISIBILITY_NOTE[value]}</span>
+      </div>
+      <div className="bet-vis-seg" role="group" aria-label="Bet visibility">
+        {BET_VISIBILITY_OPTIONS.map((o) => (
+          <button
+            key={o.mode}
+            type="button"
+            className={`bet-vis-seg-btn${value === o.mode ? " on" : ""}`}
+            aria-pressed={value === o.mode}
+            disabled={busy}
+            onClick={() => onChange(o.mode)}
+          >
+            {o.label}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 const PICK_LABEL: Record<BetPick, string> = {
   HOME: "Home",
   DRAW: "Draw",
@@ -1612,20 +1649,21 @@ function fixtureDay(utcDate: string): string {
 function BettingSection({
   code,
   isHost,
-  betsPublic,
+  betVisibility,
 }: {
   code: string;
   isHost: boolean;
-  betsPublic: boolean;
+  betVisibility: BetVisibility;
 }) {
   const bankroll = useQuery(api.betting.myBankroll, { code });
   const matches = useQuery(api.betting.bettableMatches, { code });
   const bets = useQuery(api.betting.myBets, { code });
-  // Only fetched/populated by the server when the host has made bets public.
+  // Populated by the server unless visibility is "hidden"; in "live" mode it
+  // only carries bets whose match has kicked off.
   const roomBets = useQuery(api.betting.roomBets, { code });
   const placeBet = useMutation(api.betting.placeBet);
   const cancelBet = useMutation(api.betting.cancelBet);
-  const setBetsPublic = useMutation(api.betting.setBetsPublic);
+  const setBetVisibility = useMutation(api.betting.setBetVisibility);
   const [err, setErr] = useState("");
   // Fixtures are long-ranging, so default to just the soonest matchday and let
   // the player reveal further fixtures a few at a time. `extra` counts how many
@@ -1667,14 +1705,27 @@ function BettingSection({
     }
   }
 
-  async function handleToggleVisibility() {
+  async function handleSetVisibility(mode: BetVisibility) {
     setErr("");
     try {
-      await setBetsPublic({ code, value: !betsPublic });
+      await setBetVisibility({ code, mode });
     } catch (e: any) {
       setErr(e.message ?? "Could not change bet visibility.");
     }
   }
+
+  // Split bets into current (still-open: scheduled or live) and history
+  // (finished/settled). `open` is the server's per-bet flag. Applies to the
+  // viewer's own bets and to every exposed player group, in all modes.
+  const myCurrent = (bets ?? []).filter((b) => b.open);
+  const myHistory = (bets ?? []).filter((b) => !b.open);
+  const splitGroups = (pred: (b: MyBet) => boolean) =>
+    (roomBets ?? [])
+      .map((g) => ({ ...g, bets: g.bets.filter(pred) }))
+      .filter((g) => g.bets.length > 0);
+  const roomCurrent = splitGroups((b) => b.open);
+  const roomHistory = splitGroups((b) => !b.open);
+  const hasHistory = myHistory.length > 0 || roomHistory.length > 0;
 
   return (
     <CollapsibleSection
@@ -1705,26 +1756,10 @@ function BettingSection({
       )}
 
       {isHost && (
-        <div className="bet-visibility-row">
-          <div className="bet-visibility-text">
-            <span className="bet-visibility-label">👀 Show everyone’s bets</span>
-            <span className="bet-visibility-note">
-              {betsPublic
-                ? "Everyone can see each player’s picks, stakes and odds."
-                : "Bets are private — only you see your own."}
-            </span>
-          </div>
-          <button
-            type="button"
-            role="switch"
-            aria-checked={betsPublic}
-            className={`timer-switch${betsPublic ? " on" : ""}`}
-            onClick={handleToggleVisibility}
-          >
-            <span className="knob" />
-            <span className="timer-switch-text">{betsPublic ? "On" : "Off"}</span>
-          </button>
-        </div>
+        <BetVisibilityControl
+          value={betVisibility}
+          onChange={handleSetVisibility}
+        />
       )}
 
       {err && <div className="err">{err}</div>}
@@ -1782,22 +1817,24 @@ function BettingSection({
         </>
       )}
 
-      {bets && bets.length > 0 && (
+      {/* Current bets: still-open picks (upcoming + live). Finished bets drop
+          down to the history section below. */}
+      {myCurrent.length > 0 && (
         <>
           <h4 className="bet-subhead">Your bets</h4>
           <div className="bet-list">
-            {bets.map((b) => (
+            {myCurrent.map((b) => (
               <MyBetRow key={b.matchExtId} b={b} />
             ))}
           </div>
         </>
       )}
 
-      {betsPublic && roomBets && roomBets.length > 0 && (
+      {roomCurrent.length > 0 && (
         <>
           <h4 className="bet-subhead">Everyone’s bets</h4>
           <div className="bet-everyone">
-            {roomBets.map((g) => (
+            {roomCurrent.map((g) => (
               <div key={g.playerId} className="bet-player-group">
                 <div className="bpg-name">
                   {g.name}
@@ -1812,6 +1849,42 @@ function BettingSection({
             ))}
           </div>
         </>
+      )}
+
+      {/* History: bets on finished matches, kept out of the live section. */}
+      {hasHistory && (
+        <div className="bet-history">
+          <h4 className="bet-subhead">Bet history</h4>
+          {myHistory.length > 0 && (
+            <div className="bet-player-group">
+              <div className="bpg-name">
+                Your bets<span className="bpg-you">you</span>
+              </div>
+              <div className="bet-list">
+                {myHistory.map((b) => (
+                  <MyBetRow key={b.matchExtId} b={b} />
+                ))}
+              </div>
+            </div>
+          )}
+          {roomHistory.length > 0 && (
+            <div className="bet-everyone">
+              {roomHistory.map((g) => (
+                <div key={g.playerId} className="bet-player-group">
+                  <div className="bpg-name">
+                    {g.name}
+                    {g.isMe && <span className="bpg-you">you</span>}
+                  </div>
+                  <div className="bet-list">
+                    {g.bets.map((b) => (
+                      <MyBetRow key={b.matchExtId} b={b} />
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
       )}
     </CollapsibleSection>
   );

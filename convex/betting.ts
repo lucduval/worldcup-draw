@@ -24,6 +24,16 @@ function isFinished(m: { status: string; winner?: BetPick }): boolean {
   return m.status === "FINISHED" && m.winner != null;
 }
 
+// The room's three visibility modes for other players' bets.
+export type BetVisibility = "hidden" | "live" | "public";
+
+// Effective bet visibility for a room: honours the three-way `betVisibility`
+// field and falls back to the legacy `betsPublic` boolean for rooms created
+// before it existed (public when true, hidden otherwise).
+function betVisibilityOf(room: Doc<"rooms">): BetVisibility {
+  return room.betVisibility ?? (room.betsPublic ? "public" : "hidden");
+}
+
 // A match is bettable only if both teams resolve to a POOL rank (a name-mapping
 // miss leaves a team unranked, so we can't price it).
 function ranksFor(
@@ -281,7 +291,8 @@ export const roomBets = query({
     if (!userId) return null;
     const seat = await viewerSeat(ctx, code, userId);
     if (!seat || !bettingOpen(seat.room)) return null;
-    if (!seat.room.betsPublic) return null;
+    const visibility = betVisibilityOf(seat.room);
+    if (visibility === "hidden") return null;
 
     const players = await ctx.db
       .query("players")
@@ -303,6 +314,9 @@ export const roomBets = query({
     >();
     for (const b of bets) {
       const m = matchByExtId.get(b.matchExtId);
+      // In "live" mode a bet is only exposed to others once its match has
+      // kicked off; still-open (SCHEDULED/TIMED) picks stay hidden until then.
+      if (visibility === "live" && (!m || isOpen(m.status))) continue;
       const finished = m ? isFinished(m) : false;
       const won = finished && b.pick === m!.winner;
       const potentialReturn = Math.round(b.stake * b.odds);
@@ -348,18 +362,26 @@ export const roomBets = query({
 
 // ── Mutations ──────────────────────────────────────────────────────────────────
 
-// Host-only switch for room-wide bet visibility. When on, `roomBets` exposes
-// every player's bets to every member; when off, bets are private again. Allowed
-// on any `done` room with betting on (the betting layer's lifecycle).
-export const setBetsPublic = mutation({
-  args: { code: v.string(), value: v.boolean() },
-  handler: async (ctx, { code, value }) => {
+// Host-only switch for room-wide bet visibility (see `betVisibilityOf`):
+// "hidden" keeps bets private, "live" reveals each bet to everyone once its
+// match kicks off, and "public" exposes every bet immediately. Allowed on any
+// `done` room with betting on (the betting layer's lifecycle).
+export const setBetVisibility = mutation({
+  args: {
+    code: v.string(),
+    mode: v.union(
+      v.literal("hidden"),
+      v.literal("live"),
+      v.literal("public"),
+    ),
+  },
+  handler: async (ctx, { code, mode }) => {
     const userId = await requireUser(ctx);
     const seat = await viewerSeat(ctx, code, userId);
     if (!seat) throw new Error("You're not in this game.");
     if (seat.room.hostId !== userId)
       throw new Error("Only the host can change bet visibility.");
-    await ctx.db.patch(seat.room._id, { betsPublic: value });
+    await ctx.db.patch(seat.room._id, { betVisibility: mode });
   },
 });
 

@@ -1050,6 +1050,18 @@ footer{text-align:center;color:var(--ink);font-weight:400;font-size:12px;padding
 .bet-visibility-label{font-weight:600;font-size:14px}
 .bet-visibility-note{font-size:12px;color:var(--muted)}
 
+/* Three-way visibility selector: Hidden / When live / Public */
+.bet-vis-seg{display:inline-flex;flex-shrink:0;background:var(--bg);border:1px solid var(--line);
+  border-radius:999px;padding:3px;gap:2px}
+.bet-vis-seg-btn{border:0;background:transparent;cursor:pointer;font:inherit;font-size:12px;
+  font-weight:600;color:var(--muted);padding:6px 12px;border-radius:999px;white-space:nowrap}
+.bet-vis-seg-btn.on{background:var(--pitch);color:#fff}
+.bet-vis-seg-btn:disabled{opacity:.5;cursor:default}
+
+/* Settled-bet history, split out from the live betting list */
+.bet-history{margin-top:18px;padding-top:6px;border-top:1px solid var(--line)}
+.bet-history .bet-everyone{margin-top:12px}
+
 /* "Everyone's bets" - one group per player when the host has made bets public */
 .bet-everyone{display:flex;flex-direction:column;gap:16px}
 .bet-player-group{display:flex;flex-direction:column;gap:8px}
