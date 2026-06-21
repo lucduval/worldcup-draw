@@ -15,6 +15,11 @@ const FLAG_BY_NAME: Record<string, string> = Object.fromEntries(
   POOL.map((t) => [t.name, t.flag]),
 );
 
+// Max settled bets returned per player in `roomBets`. The client reveals these
+// in pages (5, then +10) behind a collapsed group; capping the window keeps the
+// reactive payload bounded as bet history accumulates over the tournament.
+const HISTORY_WINDOW = 50;
+
 // A match is "kicked off" (no longer bettable / editable) once it leaves the
 // pre-match states. SCHEDULED/TIMED are still open; everything else is locked.
 function isOpen(status: string): boolean {
@@ -350,8 +355,28 @@ export const roomBets = query({
       g.bets.push(row);
     }
 
-    const out = [...groups.values()];
-    for (const g of out) g.bets.sort((a, b) => b.placedAt - a.placedAt);
+    // Keep every still-open bet (the bounded "current" section needs them all),
+    // but cap the settled history per player to the newest HISTORY_WINDOW so the
+    // payload stays bounded as the tournament grows. settledTotal/settledNet are
+    // computed over the full settled set so the client's collapsed summary stays
+    // accurate even when the returned rows are capped.
+    const out = [...groups.values()].map((g) => {
+      const open = g.bets
+        .filter((b) => b.open)
+        .sort((a, b) => b.placedAt - a.placedAt);
+      const settled = g.bets
+        .filter((b) => !b.open)
+        .sort((a, b) => b.placedAt - a.placedAt);
+      const settledNet = settled.reduce((s, b) => s + b.settledNet, 0);
+      return {
+        playerId: g.playerId,
+        name: g.name,
+        isMe: g.isMe,
+        bets: [...open, ...settled.slice(0, HISTORY_WINDOW)],
+        settledTotal: settled.length,
+        settledNet,
+      };
+    });
     // Viewer first, then alphabetical, so each player finds their own row fast.
     out.sort((a, b) =>
       a.isMe === b.isMe ? a.name.localeCompare(b.name) : a.isMe ? -1 : 1,

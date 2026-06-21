@@ -1717,10 +1717,13 @@ function BettingSection({
   // Split bets into current (still-open: scheduled or live) and history
   // (finished/settled). `open` is the server's per-bet flag. Applies to the
   // viewer's own bets and to every exposed player group, in all modes.
+  // The viewer's own group is excluded here — they're already shown in the
+  // dedicated "Your bets" sections, so showing it again would duplicate it.
   const myCurrent = (bets ?? []).filter((b) => b.open);
   const myHistory = (bets ?? []).filter((b) => !b.open);
   const splitGroups = (pred: (b: MyBet) => boolean) =>
     (roomBets ?? [])
+      .filter((g) => !g.isMe)
       .map((g) => ({ ...g, bets: g.bets.filter(pred) }))
       .filter((g) => g.bets.length > 0);
   const roomCurrent = splitGroups((b) => b.open);
@@ -1851,36 +1854,33 @@ function BettingSection({
         </>
       )}
 
-      {/* History: bets on finished matches, kept out of the live section. */}
+      {/* History: bets on finished matches, kept out of the live section. Each
+          player is a collapsed group that expands to its newest 5 settled bets,
+          then loads 10 more at a time — keeps a long tournament's history short
+          by default. */}
       {hasHistory && (
         <div className="bet-history">
           <h4 className="bet-subhead">Bet history</h4>
           {myHistory.length > 0 && (
-            <div className="bet-player-group">
-              <div className="bpg-name">
-                Your bets<span className="bpg-you">you</span>
-              </div>
-              <div className="bet-list">
-                {myHistory.map((b) => (
-                  <MyBetRow key={b.matchExtId} b={b} />
-                ))}
-              </div>
-            </div>
+            <CollapsibleBetGroup
+              name="Your bets"
+              isMe
+              bets={myHistory}
+              total={myHistory.length}
+              net={myHistory.reduce((s, b) => s + b.settledNet, 0)}
+            />
           )}
           {roomHistory.length > 0 && (
             <div className="bet-everyone">
               {roomHistory.map((g) => (
-                <div key={g.playerId} className="bet-player-group">
-                  <div className="bpg-name">
-                    {g.name}
-                    {g.isMe && <span className="bpg-you">you</span>}
-                  </div>
-                  <div className="bet-list">
-                    {g.bets.map((b) => (
-                      <MyBetRow key={b.matchExtId} b={b} />
-                    ))}
-                  </div>
-                </div>
+                <CollapsibleBetGroup
+                  key={g.playerId}
+                  name={g.name}
+                  isMe={g.isMe}
+                  bets={g.bets}
+                  total={g.settledTotal}
+                  net={g.settledNet}
+                />
               ))}
             </div>
           )}
@@ -2038,6 +2038,75 @@ function MyBetRow({ b }: { b: MyBet }) {
             ? `won +${b.settledNet}`
             : `lost ${b.settledNet}`}
       </span>
+    </div>
+  );
+}
+
+// A collapsed bet-history group for one player. Header shows the name plus a
+// settled-bet count and net P/L; expanding reveals the newest 5 bets, with
+// "Load more" paging 10 at a time up to whatever the server returned (`bets`
+// may be capped below `total` — see HISTORY_WINDOW in convex/betting.ts).
+const HISTORY_PAGE = 10;
+function CollapsibleBetGroup({
+  name,
+  isMe,
+  bets,
+  total,
+  net,
+}: {
+  name: string;
+  isMe: boolean;
+  bets: MyBet[]; // settled bets, newest first
+  total: number; // total settled count (may exceed bets.length when capped)
+  net: number; // net P/L across all settled bets
+}) {
+  const [open, setOpen] = useState(false);
+  const [visible, setVisible] = useState(5);
+  const netCls = net > 0 ? "won" : net < 0 ? "lost" : "";
+  return (
+    <div className="bet-player-group">
+      <button
+        type="button"
+        className="bpg-toggle"
+        aria-expanded={open}
+        onClick={() => setOpen((o) => !o)}
+      >
+        <span className="bpg-name">
+          {name}
+          {isMe && <span className="bpg-you">you</span>}
+        </span>
+        <span className="bpg-summary">
+          <span className="bpg-count">
+            {total} {total === 1 ? "bet" : "bets"}
+          </span>
+          {net !== 0 && (
+            <span className={`bpg-net ${netCls}`}>
+              {net > 0 ? `+${net}` : net}
+            </span>
+          )}
+          <span className="bpg-chev" aria-hidden>
+            {open ? "▾" : "▸"}
+          </span>
+        </span>
+      </button>
+      {open && (
+        <>
+          <div className="bet-list">
+            {bets.slice(0, visible).map((b) => (
+              <MyBetRow key={b.matchExtId} b={b} />
+            ))}
+          </div>
+          {visible < bets.length && (
+            <button
+              type="button"
+              className="bpg-more"
+              onClick={() => setVisible((v) => v + HISTORY_PAGE)}
+            >
+              Load more
+            </button>
+          )}
+        </>
+      )}
     </div>
   );
 }

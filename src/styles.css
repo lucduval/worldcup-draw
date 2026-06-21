@@ -1069,6 +1069,22 @@ footer{text-align:center;color:var(--ink);font-weight:400;font-size:12px;padding
 .bpg-you{font-size:10px;letter-spacing:.5px;text-transform:uppercase;color:var(--muted);
   background:#ece7dd;border-radius:999px;padding:2px 8px;font-weight:600}
 
+/* Collapsed history group: a full-width toggle with name on the left and a
+   count + net-P/L summary on the right. */
+.bpg-toggle{display:flex;align-items:center;justify-content:space-between;gap:10px;
+  width:100%;border:1px solid var(--line);background:var(--card);border-radius:11px;
+  padding:10px 12px;cursor:pointer;font:inherit;text-align:left}
+.bpg-toggle:hover{border-color:var(--muted)}
+.bpg-summary{display:flex;align-items:center;gap:10px;font-size:13px;color:var(--muted)}
+.bpg-count{white-space:nowrap}
+.bpg-net{font-weight:600}
+.bpg-net.won{color:var(--tier1)}
+.bpg-net.lost{color:var(--accent)}
+.bpg-chev{color:var(--muted);font-size:11px}
+.bpg-more{align-self:flex-start;border:0;background:transparent;cursor:pointer;font:inherit;
+  font-size:13px;font-weight:600;color:var(--pitch);padding:4px 0}
+.bpg-more:hover{text-decoration:underline}
+
 @media (max-width:560px){
   .bank-num{font-size:19px}
   .br-match{flex-basis:100%}
