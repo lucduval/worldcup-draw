@@ -54,10 +54,12 @@ export default function Fixtures({
     return { strip: upcoming.slice(0, NEXT_COUNT), stripLabel: "Next matches" };
   }, [now, hasTeams, teamSet]);
 
-  const panelList = useMemo(
-    () => (mineOnly ? FIXTURES.filter((f) => involves(f, teamSet)) : FIXTURES),
-    [mineOnly, teamSet],
-  );
+  // Full schedule: drop fixtures that have already kicked off (same upcoming
+  // rule as the strip), then optionally narrow to the viewer's own teams.
+  const panelList = useMemo(() => {
+    const upcoming = FIXTURES.filter((f) => isUpcoming(f.utc, now));
+    return mineOnly ? upcoming.filter((f) => involves(f, teamSet)) : upcoming;
+  }, [mineOnly, teamSet, now]);
 
   return (
     <CollapsibleSection id="fixtures" title="Fixtures" subtitle="all times SAST">
@@ -92,7 +94,7 @@ export default function Fixtures({
               <div>
                 <div className="fx-drawertitle">Full schedule</div>
                 <div className="fx-drawersub">
-                  104 matches · all times SAST
+                  {panelList.length} {panelList.length === 1 ? "match" : "matches"} · all times SAST
                 </div>
               </div>
               <button
@@ -124,7 +126,9 @@ export default function Fixtures({
             <div className="fx-drawerbody">
               {panelList.length === 0 ? (
                 <div className="fx-empty">
-                  None of your teams have a fixed fixture yet.
+                  {mineOnly
+                    ? "None of your teams have an upcoming fixture."
+                    : "No upcoming matches - that's a wrap. 🏆"}
                 </div>
               ) : (
                 <DayGroups list={panelList} teamSet={teamSet} owners={owns} />
