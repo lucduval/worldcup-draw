@@ -394,8 +394,13 @@ export const createRoom = mutation({
     entryFee: v.optional(v.number()),
     mode: v.optional(v.union(v.literal("live"), v.literal("async"))),
     startingPot: v.optional(v.number()),
+    // Coin re-buy cap; defaults to "off" so a new room never silently gains
+    // real-money re-buys. Editable later via setPurchaseCap.
+    purchaseCap: v.optional(
+      v.union(v.literal("off"), v.literal("unlimited"), v.number()),
+    ),
   },
-  handler: async (ctx, { name, entryFee, mode, startingPot }) => {
+  handler: async (ctx, { name, entryFee, mode, startingPot, purchaseCap }) => {
     const userId = await requireUser(ctx);
 
     // Clamp the buy-in to a sane whole-Rand amount; fall back to the default.
@@ -406,6 +411,14 @@ export const createRoom = mutation({
 
     // Per-player betting bankroll; defaults to STARTING_POT_DEFAULT, 0 = off.
     const pot = clampStartingPot(startingPot);
+
+    // Coin re-buy cap: undefined/"off" ⇒ Off (the default), "unlimited" ⇒ no
+    // ceiling, a positive number ⇒ that per-player ceiling.
+    const capUnlimited = purchaseCap === "unlimited";
+    const capNumber =
+      typeof purchaseCap === "number" && purchaseCap >= 1
+        ? Math.round(purchaseCap)
+        : undefined;
 
     let code = "";
     for (let i = 0; i < 12; i++) {
@@ -429,6 +442,8 @@ export const createRoom = mutation({
       mode: mode === "async" ? "async" : "live",
       entryFee: fee,
       startingPot: pot,
+      purchaseUnlimited: capUnlimited,
+      purchaseCap: capNumber,
       turnOrder: [],
       pickIndex: 0,
     });
@@ -531,6 +546,65 @@ export const setPot = mutation({
       throw new Error("Players have already placed bets - the pot is locked.");
 
     await ctx.db.patch(room._id, { startingPot: clampStartingPot(startingPot) });
+  },
+});
+
+// Host sets the per-player coin re-buy cap: "off", "unlimited", or a whole
+// number ceiling on cumulative purchased coins (see pool.ts `purchaseCapOf`).
+// Unlike the betting pot, the cap is NOT locked by the existence of bets — the
+// host can loosen or tighten it any time the room isn't mid-draw. The one guard:
+// a numeric cap may not be set below what some player has ALREADY bought, so the
+// cap can never retroactively invalidate a purchase. Independent of startingPot.
+export const setPurchaseCap = mutation({
+  args: {
+    code: v.string(),
+    cap: v.union(v.literal("off"), v.literal("unlimited"), v.number()),
+  },
+  handler: async (ctx, { code, cap }) => {
+    const userId = await requireUser(ctx);
+    const room = await ctx.db
+      .query("rooms")
+      .withIndex("by_code", (q) => q.eq("code", code))
+      .unique();
+    if (!room) throw new Error("Room not found.");
+    if (room.hostId !== userId)
+      throw new Error("Only the host can change the coin cap.");
+    if (room.status === "drawing")
+      throw new Error("Finish the draw before changing the coin cap.");
+
+    if (cap === "off") {
+      await ctx.db.patch(room._id, {
+        purchaseUnlimited: false,
+        purchaseCap: undefined,
+      });
+      return;
+    }
+    if (cap === "unlimited") {
+      await ctx.db.patch(room._id, {
+        purchaseUnlimited: true,
+        purchaseCap: undefined,
+      });
+      return;
+    }
+
+    // Numeric cap: whole number ≥ 1, and never below the most anyone has bought.
+    const want = Math.max(1, Math.round(cap));
+    const players = await ctx.db
+      .query("players")
+      .withIndex("by_room", (q) => q.eq("roomId", room._id))
+      .collect();
+    const maxBought = players.reduce(
+      (m, p) => Math.max(m, p.purchasedCoins ?? 0),
+      0,
+    );
+    if (want < maxBought)
+      throw new Error(
+        `Someone has already bought ${maxBought} coins — the cap can't be lower than that.`,
+      );
+    await ctx.db.patch(room._id, {
+      purchaseUnlimited: false,
+      purchaseCap: want,
+    });
   },
 });
 
@@ -1093,10 +1167,14 @@ export const resetRoom = mutation({
       .withIndex("by_room", (q) => q.eq("roomId", room._id))
       .collect();
     for (const p of roomPlayers) {
-      if (p.africanTeam || p.watchedAt)
+      // Also wipe purchased coins so a thrown-away game leaves nobody owing cash
+      // for it; their pot contribution disappears with the bets. The free
+      // starting pot stays as the host configured it.
+      if (p.africanTeam || p.watchedAt || p.purchasedCoins)
         await ctx.db.patch(p._id, {
           africanTeam: undefined,
           watchedAt: undefined,
+          purchasedCoins: undefined,
         });
     }
     // Drop any pending turn timer; the host's on/off + length preference is

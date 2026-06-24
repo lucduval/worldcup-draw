@@ -7,7 +7,11 @@ import {
   RANK_BY_NAME,
   matchOdds,
   apiMatchOdds,
+  purchaseCapOf,
+  remainingAllowance,
+  validatePurchase,
   type BetPick,
+  type PurchaseCap,
 } from "./pool";
 
 // Flag lookup for the canonical pool names stored on matches.
@@ -83,16 +87,25 @@ function oddsForMatch(
 //   settledNet    = Σ over FINISHED bets: won ? round(stake*odds)-stake : -stake
 //   pendingStakes = Σ stake over bets whose match hasn't FINISHED yet
 //   bankroll      = max(0, startingPot + settledNet)  (what folds into the score)
-//   available     = max(0, bankroll - pendingStakes)  (what can still be staked)
+//   available     = max(0, startingPot + purchasedCoins + settledNet − pendingStakes)
+//
+// `purchasedCoins` are coins the player bought mid-tournament (see buyCoins).
+// They are deliberately ABSENT from `bankroll` (the scored figure) — buying
+// coins never moves the leaderboard, only the wins/losses staked with them do.
+// They are present in `available` so the player can stake them. Because the
+// scored `bankroll` is unchanged, `standings` (which reads only `bankroll`)
+// needs no behavioural change.
 //
 // A pending stake is held (still counted in bankroll) until its match settles;
 // it is only withheld from `available`. The staking invariant (stake <=
-// available) normally keeps the raw sum >= 0, but a host lowering the pot after
-// bets exist, or a re-synced result, can push it negative; both are floored at 0
-// here so every reader (standings, myBankroll, placeBet) agrees and a player
-// never drops below their pure draw score.
+// available) normally keeps the sums >= 0, but a host lowering the pot after
+// bets exist, or a re-synced result, can push them negative; both are floored at
+// 0 here so every reader (standings, myBankroll, placeBet) agrees and a player
+// never drops below their pure draw score. Losing bought coins can drop the
+// scored bankroll below a non-buyer's, down to 0 — never negative.
 export type Bankroll = {
   startingPot: number;
+  purchasedCoins: number;
   bankroll: number;
   available: number;
   pendingStakes: number;
@@ -101,6 +114,7 @@ export type Bankroll = {
 
 export function computeBankroll(
   startingPot: number,
+  purchasedCoins: number,
   bets: { matchExtId: number; pick: BetPick; stake: number; odds: number }[],
   matchByExtId: Map<number, { status: string; winner?: BetPick }>,
 ): Bankroll {
@@ -116,8 +130,18 @@ export function computeBankroll(
     }
   }
   const bankroll = Math.max(0, startingPot + settledNet);
-  const available = Math.max(0, bankroll - pendingStakes);
-  return { startingPot, bankroll, available, pendingStakes, settledNet };
+  const available = Math.max(
+    0,
+    startingPot + purchasedCoins + settledNet - pendingStakes,
+  );
+  return {
+    startingPot,
+    purchasedCoins,
+    bankroll,
+    available,
+    pendingStakes,
+    settledNet,
+  };
 }
 
 // ── Shared loaders ───────────────────────────────────────────────────────────
@@ -218,6 +242,7 @@ export const myBankroll = query({
     if (startingPot <= 0)
       return {
         startingPot: 0,
+        purchasedCoins: 0,
         bankroll: 0,
         available: 0,
         pendingStakes: 0,
@@ -232,7 +257,70 @@ export const myBankroll = query({
       .collect();
     const matches = await ctx.db.query("matches").collect();
     const matchByExtId = new Map(matches.map((m) => [m.extId, m]));
-    return computeBankroll(startingPot, bets, matchByExtId);
+    return computeBankroll(
+      startingPot,
+      seat.me.purchasedCoins ?? 0,
+      bets,
+      matchByExtId,
+    );
+  },
+});
+
+// Coin re-buy state for the room, public to every member. Feeds three things:
+// the viewer's buy control (cap + remaining allowance), the public purchase
+// ledger / settle-up sheet (who bought how many ⇒ Rand owed), and the displayed
+// prize pot (entryFee × players + totalPurchased, summed on the client). Unlike
+// bets, purchases are always fully public — they're contributions, not strategy.
+// Returns null only when the viewer isn't a member.
+export const purchaseInfo = query({
+  args: { code: v.string() },
+  handler: async (ctx, { code }) => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) return null;
+    const seat = await viewerSeat(ctx, code, userId);
+    if (!seat) return null;
+
+    const players = await ctx.db
+      .query("players")
+      .withIndex("by_room", (q) => q.eq("roomId", seat.room._id))
+      .collect();
+
+    const cap: PurchaseCap = purchaseCapOf(seat.room);
+    const myPurchased = seat.me.purchasedCoins ?? 0;
+    let totalPurchased = 0;
+    const ledger = [];
+    for (const p of players) {
+      const coins = p.purchasedCoins ?? 0;
+      totalPurchased += coins;
+      if (coins > 0)
+        ledger.push({
+          playerId: p._id,
+          name: p.name,
+          purchasedCoins: coins,
+          isMe: p._id === seat.me._id,
+        });
+    }
+    // Biggest contributor first; the viewer's own row breaks ties to the top.
+    ledger.sort((a, b) =>
+      b.purchasedCoins === a.purchasedCoins
+        ? a.isMe === b.isMe
+          ? a.name.localeCompare(b.name)
+          : a.isMe
+            ? -1
+            : 1
+        : b.purchasedCoins - a.purchasedCoins,
+    );
+
+    return {
+      cap, // discriminated: { kind: "off" | "unlimited" | "limited"; cap? }
+      enabled: cap.kind !== "off",
+      // Buying needs betting on as well as the cap enabled (mirrors buyCoins).
+      bettingOpen: bettingOpen(seat.room),
+      myPurchased,
+      remaining: remainingAllowance(cap, myPurchased), // null = unlimited
+      totalPurchased,
+      ledger,
+    };
   },
 });
 
@@ -461,7 +549,12 @@ export const placeBet = mutation({
     const others = myBets.filter((b) => b.matchExtId !== matchExtId);
     const matches = await ctx.db.query("matches").collect();
     const matchByExtId = new Map(matches.map((m) => [m.extId, m]));
-    const { available } = computeBankroll(startingPot, others, matchByExtId);
+    const { available } = computeBankroll(
+      startingPot,
+      me.purchasedCoins ?? 0,
+      others,
+      matchByExtId,
+    );
     if (stake > available)
       throw new Error(
         `Stake exceeds your available bankroll (${available}).`,
@@ -516,5 +609,32 @@ export const cancelBet = mutation({
       .collect();
     const existing = myBets.find((b) => b.matchExtId === matchExtId);
     if (existing) await ctx.db.delete(existing._id);
+  },
+});
+
+// Buy more coins (a real-money re-buy, settled offline on the honour system).
+// Bought coins top up the player's Available betting balance and grow the
+// displayed prize pot by the same amount, but never their leaderboard score.
+// Identity is server-derived. Refused unless the room is `done`, betting is on,
+// and the host's cap allows it. Irreversible — there is no un-buy / refund.
+export const buyCoins = mutation({
+  args: { code: v.string(), amount: v.number() },
+  handler: async (ctx, { code, amount }) => {
+    const userId = await requireUser(ctx);
+    const seat = await viewerSeat(ctx, code, userId);
+    if (!seat) throw new Error("You're not in this game.");
+    const { room, me } = seat;
+
+    if (room.status !== "done")
+      throw new Error("Buying opens once the draw is locked.");
+    if ((room.startingPot ?? 0) <= 0)
+      throw new Error("Betting is off for this room.");
+
+    const cap = purchaseCapOf(room);
+    const already = me.purchasedCoins ?? 0;
+    const check = validatePurchase(cap, already, amount);
+    if (!check.ok) throw new Error(check.error);
+
+    await ctx.db.patch(me._id, { purchasedCoins: already + amount });
   },
 });

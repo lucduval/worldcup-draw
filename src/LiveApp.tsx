@@ -124,6 +124,110 @@ function PotControl({
   );
 }
 
+// The host's coin re-buy cap (1 coin = R1, settled offline). Three states:
+// "off" forbids buying, "unlimited" allows any whole amount, a number caps the
+// cumulative coins each player may buy on top of their free pot.
+type CapValue = "off" | "unlimited" | number;
+const CAP_DEFAULT = 50; // seed when the host first switches to "capped"
+
+// Convert a room doc to its current cap value (mirrors pool.ts purchaseCapOf).
+function roomCapValue(room: RoomData["room"]): CapValue {
+  if (room.purchaseUnlimited) return "unlimited";
+  if (room.purchaseCap != null && room.purchaseCap > 0) return room.purchaseCap;
+  return "off";
+}
+
+function capImpact(cap: CapValue): string {
+  if (cap === "off") return "Re-buys off — players bet only their free pot.";
+  if (cap === "unlimited")
+    return "Unlimited — players can buy as many coins as they like (R1 each).";
+  return `Each player can buy up to ${cap} more coins (R${cap}) on top of their free pot.`;
+}
+
+// Host control for the coin re-buy cap. A segmented Off / Capped / Unlimited
+// selector with a number input when capped. In the create form `onChange` just
+// updates local state; in a running room it fires setPurchaseCap.
+function PurchaseCapControl({
+  value,
+  busy,
+  onChange,
+}: {
+  value: CapValue;
+  busy?: boolean;
+  onChange: (cap: CapValue) => void;
+}) {
+  const mode =
+    value === "off" ? "off" : value === "unlimited" ? "unlimited" : "limited";
+  // Remember the last numeric cap so flipping modes restores it.
+  const [amount, setAmount] = useState(
+    typeof value === "number" ? value : CAP_DEFAULT,
+  );
+  useEffect(() => {
+    if (typeof value === "number") setAmount(value);
+  }, [value]);
+
+  const commitAmount = (v: number) => {
+    const next = Math.max(1, Math.round(v || 0));
+    setAmount(next);
+    onChange(next);
+  };
+
+  return (
+    <div className="cap-control">
+      <div className="cap-seg" role="group" aria-label="Coin buying">
+        <button
+          type="button"
+          className={`cap-seg-btn${mode === "off" ? " on" : ""}`}
+          aria-pressed={mode === "off"}
+          disabled={busy}
+          onClick={() => onChange("off")}
+        >
+          Off
+        </button>
+        <button
+          type="button"
+          className={`cap-seg-btn${mode === "limited" ? " on" : ""}`}
+          aria-pressed={mode === "limited"}
+          disabled={busy}
+          onClick={() => onChange(amount)}
+        >
+          Capped
+        </button>
+        <button
+          type="button"
+          className={`cap-seg-btn${mode === "unlimited" ? " on" : ""}`}
+          aria-pressed={mode === "unlimited"}
+          disabled={busy}
+          onClick={() => onChange("unlimited")}
+        >
+          Unlimited
+        </button>
+      </div>
+      {mode === "limited" && (
+        <div className="cap-amount">
+          <label className="cap-amount-lbl">Max coins / player</label>
+          <input
+            type="number"
+            inputMode="numeric"
+            min={1}
+            step={1}
+            value={amount}
+            disabled={busy}
+            onChange={(e) =>
+              setAmount(Math.max(1, Math.floor(Number(e.target.value) || 1)))
+            }
+            onBlur={(e) => commitAmount(Number(e.target.value))}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") commitAmount(Number(e.currentTarget.value));
+            }}
+          />
+        </div>
+      )}
+      <p className="hint cap-impact">🪙 {capImpact(value)}</p>
+    </div>
+  );
+}
+
 // Host-only control to toggle the live turn timer and pick its length. Used in
 // the lobby and (compact) mid-draw. Only renders for the host; everyone else
 // reads the countdown itself off the turn bar.
@@ -313,6 +417,7 @@ function GamesList({
   const [buyIn, setBuyIn] = useState(String(ENTRY_FEE));
   const [mode, setMode] = useState<"live" | "async">("live");
   const [startingPot, setStartingPot] = useState(STARTING_POT_DEFAULT);
+  const [purchaseCap, setPurchaseCap] = useState<CapValue>("off");
   const [joinCode, setJoinCode] = useState("");
   const [err, setErr] = useState(notice || "");
   const [busy, setBusy] = useState(false);
@@ -330,6 +435,8 @@ function GamesList({
         entryFee: fee,
         mode,
         startingPot,
+        // Re-buys only make sense when betting is on; force Off otherwise.
+        purchaseCap: startingPot > 0 ? purchaseCap : "off",
       });
       onEnter(code);
     } catch (e: any) {
@@ -484,6 +591,16 @@ function GamesList({
             <label>Betting pot per player</label>
             <PotControl value={startingPot} busy={busy} onChange={setStartingPot} />
           </div>
+          {startingPot > 0 && (
+            <div className="field">
+              <label>🪙 Let players buy more coins</label>
+              <PurchaseCapControl
+                value={purchaseCap}
+                busy={busy}
+                onChange={setPurchaseCap}
+              />
+            </div>
+          )}
           <button className="btn big" disabled={busy} onClick={handleCreate}>
             Start a new draw →
           </button>
@@ -544,6 +661,7 @@ function Room({
   const setMode = useMutation(api.rooms.setMode);
   const setTimer = useMutation(api.rooms.setTimer);
   const setPot = useMutation(api.rooms.setPot);
+  const setPurchaseCap = useMutation(api.rooms.setPurchaseCap);
   const setBetVisibility = useMutation(api.betting.setBetVisibility);
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState(false);
@@ -556,8 +674,12 @@ function Room({
   const timerEnabled = room.timerEnabled ?? false;
   const timerSeconds = room.timerSeconds ?? DEFAULT_TIMER_SECONDS;
   const entryFee = room.entryFee ?? ENTRY_FEE;
-  const pool = entryFee * players.length;
   const startingPot = room.startingPot ?? 0;
+  // Prize pot = entry fees + every bought coin (1 coin = R1). Purchased coins
+  // grow the real cash kitty mid-tournament, so the displayed pot tracks them.
+  const purchaseInfo = useQuery(api.betting.purchaseInfo, { code: room.code });
+  const pool =
+    entryFee * players.length + (purchaseInfo?.totalPurchased ?? 0);
   // The pot locks server-side once the first bet is placed; mirror that here so
   // the host's control disables itself instead of failing on submit.
   const potLocked = useQuery(api.rooms.potLocked, { code: room.code }) === true;
@@ -638,6 +760,15 @@ function Room({
       await setPot({ code: room.code, startingPot: pot });
     } catch (e: any) {
       setErr(e.message ?? "Could not change the betting pot.");
+    }
+  }
+
+  async function handleSetPurchaseCap(cap: CapValue) {
+    setErr("");
+    try {
+      await setPurchaseCap({ code: room.code, cap });
+    } catch (e: any) {
+      setErr(e.message ?? "Could not change the coin cap.");
     }
   }
 
@@ -877,6 +1008,25 @@ function Room({
                   onChange={handleSetPot}
                   note="Each player is handed this many points to bet on real World Cup matches. Sit on it, grow it, or gamble it away - it folds into the room score, but never drags you below your draw total."
                 />
+                {startingPot > 0 && (
+                  <div
+                    style={{
+                      marginTop: 14,
+                      display: "flex",
+                      flexDirection: "column",
+                      gap: 10,
+                    }}
+                  >
+                    <label className="pot-host-label">
+                      🪙 Let players buy more coins
+                    </label>
+                    <PurchaseCapControl
+                      value={roomCapValue(room)}
+                      busy={busy}
+                      onChange={handleSetPurchaseCap}
+                    />
+                  </div>
+                )}
               </div>
             ) : startingPot > 0 ? (
               <p className="hint" style={{ marginBottom: 8 }}>
@@ -1224,7 +1374,6 @@ function Room({
         <BettingSection
           code={room.code}
           isHost={room.hostId === viewerId}
-          betVisibility={roomBetVisibility(room)}
         />
       )}
 
@@ -1316,11 +1465,13 @@ function Room({
           done={done}
           startingPot={startingPot}
           betVisibility={roomBetVisibility(room)}
+          purchaseCap={roomCapValue(room)}
           busy={busy}
           potLocked={potLocked}
           err={err}
           onSetPot={handleSetPot}
           onSetBetVisibility={handleSetBetVisibility}
+          onSetPurchaseCap={handleSetPurchaseCap}
           onReset={handleReset}
           onDelete={handleDelete}
           onClose={() => setHostSettingsOpen(false)}
@@ -1363,11 +1514,13 @@ function HostSettingsModal({
   done,
   startingPot,
   betVisibility,
+  purchaseCap,
   busy,
   potLocked,
   err,
   onSetPot,
   onSetBetVisibility,
+  onSetPurchaseCap,
   onReset,
   onDelete,
   onClose,
@@ -1375,11 +1528,13 @@ function HostSettingsModal({
   done: boolean;
   startingPot: number;
   betVisibility: BetVisibility;
+  purchaseCap: CapValue;
   busy: boolean;
   potLocked: boolean;
   err: string;
   onSetPot: (pot: number) => void;
   onSetBetVisibility: (mode: BetVisibility) => void;
+  onSetPurchaseCap: (cap: CapValue) => void;
   onReset: () => void;
   onDelete: () => void;
   onClose: () => void;
@@ -1452,6 +1607,24 @@ function HostSettingsModal({
           </div>
         )}
 
+        {done && startingPot > 0 && (
+          <div className="host-modal-block">
+            <label className="pot-host-label">
+              🪙 Let players buy more coins
+            </label>
+            <PurchaseCapControl
+              value={purchaseCap}
+              busy={busy}
+              onChange={onSetPurchaseCap}
+            />
+            <p className="hint">
+              Bought coins add to a player’s stake and the prize pot, never their
+              score. Adjustable any time — but never below what someone’s already
+              bought.
+            </p>
+          </div>
+        )}
+
         <div className="host-modal-block">
           <div className="host-modal-block-title">Danger zone</div>
           <button type="button" className="btn ghost" onClick={onReset}>
@@ -1467,6 +1640,17 @@ function HostSettingsModal({
         </div>
 
         {err && <div className="err">{err}</div>}
+
+        <div className="host-modal-actions">
+          <button
+            type="button"
+            className="btn primary"
+            disabled={busy}
+            onClick={onClose}
+          >
+            Save & close
+          </button>
+        </div>
       </div>
     </div>
   );
@@ -1572,6 +1756,10 @@ type BettableMatch = FunctionReturnType<
   typeof api.betting.bettableMatches
 >[number];
 type MyBet = FunctionReturnType<typeof api.betting.myBets>[number];
+// A single match from the public live/finished results feed.
+type MatchResultLive = FunctionReturnType<
+  typeof api.results.recentMatches
+>[number];
 
 // Host-chosen bet visibility (mirrors the server union in convex/betting.ts).
 type BetVisibility = "hidden" | "live" | "public";
@@ -1649,22 +1837,28 @@ function fixtureDay(utcDate: string): string {
 function BettingSection({
   code,
   isHost,
-  betVisibility,
 }: {
   code: string;
   isHost: boolean;
-  betVisibility: BetVisibility;
 }) {
   const bankroll = useQuery(api.betting.myBankroll, { code });
   const matches = useQuery(api.betting.bettableMatches, { code });
+  // Currently-live World Cup games (with running scores), so players can watch
+  // the matches their bets ride on without leaving the betting panel.
+  const liveGames = useQuery(api.results.recentMatches);
   const bets = useQuery(api.betting.myBets, { code });
   // Populated by the server unless visibility is "hidden"; in "live" mode it
   // only carries bets whose match has kicked off.
   const roomBets = useQuery(api.betting.roomBets, { code });
+  // Coin re-buy state (cap, the viewer's remaining allowance, the public
+  // ledger, and the purchased total feeding the prize pot).
+  const purchase = useQuery(api.betting.purchaseInfo, { code });
   const placeBet = useMutation(api.betting.placeBet);
   const cancelBet = useMutation(api.betting.cancelBet);
-  const setBetVisibility = useMutation(api.betting.setBetVisibility);
+  const buyCoins = useMutation(api.betting.buyCoins);
   const [err, setErr] = useState("");
+  // The amount queued in the buy confirmation sheet (null = sheet closed).
+  const [buyConfirm, setBuyConfirm] = useState<number | null>(null);
   // Fixtures are long-ranging, so default to just the soonest matchday and let
   // the player reveal further fixtures a few at a time. `extra` counts how many
   // fixtures beyond that base matchday the player has chosen to reveal.
@@ -1705,12 +1899,17 @@ function BettingSection({
     }
   }
 
-  async function handleSetVisibility(mode: BetVisibility) {
+  // Buy is two-step: the buy control queues an amount into a confirmation sheet
+  // (so real-money coins are never bought by a single tap); confirming fires the
+  // mutation. Server re-validates the cap regardless.
+  async function handleBuyConfirmed(amount: number) {
     setErr("");
     try {
-      await setBetVisibility({ code, mode });
+      await buyCoins({ code, amount });
+      setBuyConfirm(null);
     } catch (e: any) {
-      setErr(e.message ?? "Could not change bet visibility.");
+      setErr(e.message ?? "Could not buy coins.");
+      setBuyConfirm(null);
     }
   }
 
@@ -1758,10 +1957,49 @@ function BettingSection({
         </div>
       )}
 
-      {isHost && (
-        <BetVisibilityControl
-          value={betVisibility}
-          onChange={handleSetVisibility}
+      {/* Breakdown line so "available" (what you can stake, incl. bought coins)
+          and "counts toward score" (the scored bankroll, excl. bought coins)
+          never look contradictory once they diverge after a re-buy. */}
+      {bankroll && (
+        <div className="bank-breakdown">
+          <span>
+            Free pot <b>{bankroll.startingPot}</b>
+          </span>
+          {bankroll.purchasedCoins > 0 && (
+            <span>
+              Bought <b>{bankroll.purchasedCoins}</b>
+            </span>
+          )}
+          <span
+            className={
+              bankroll.settledNet > 0
+                ? "bb-up"
+                : bankroll.settledNet < 0
+                  ? "bb-down"
+                  : ""
+            }
+          >
+            {bankroll.settledNet >= 0 ? "Winnings " : "Losses "}
+            <b>
+              {bankroll.settledNet > 0 ? "+" : ""}
+              {bankroll.settledNet}
+            </b>
+          </span>
+          <span className="bb-score">
+            Counts toward score <b>{bankroll.bankroll}</b>
+          </span>
+        </div>
+      )}
+
+      {/* Buy more coins — a real-money re-buy, next to the bankroll so players
+          top up exactly where they feel themselves running low. */}
+      {purchase?.enabled && purchase.bettingOpen && (
+        <BuyCoinsControl
+          remaining={purchase.remaining}
+          onQueue={(amount) => {
+            setErr("");
+            setBuyConfirm(amount);
+          }}
         />
       )}
 
@@ -1819,6 +2057,10 @@ function BettingSection({
           )}
         </>
       )}
+
+      {/* Live now: World Cup games currently in play, with running scores, so
+          players can follow the matches their open bets ride on. */}
+      <LiveGamesStrip games={liveGames} />
 
       {/* Current bets: still-open picks (upcoming + live). Finished bets drop
           down to the history section below. */}
@@ -1886,7 +2128,277 @@ function BettingSection({
           )}
         </div>
       )}
+
+      {/* Public coin ledger / offline settle-up sheet: who bought how many coins
+          and the Rand they owe. Always public (purchases are contributions, not
+          strategy), independent of the bet-visibility modes. */}
+      {purchase && purchase.ledger.length > 0 && (
+        <div className="coin-ledger">
+          <h4 className="bet-subhead">
+            🪙 Coins bought
+            <span className="bet-subhead-note">
+              {" "}
+              · {purchase.totalPurchased} into the pot (R
+              {purchase.totalPurchased})
+            </span>
+          </h4>
+          <div className="coin-ledger-list">
+            {purchase.ledger.map((row) => (
+              <div
+                key={row.playerId}
+                className={`coin-ledger-row${row.isMe ? " me" : ""}`}
+              >
+                <span className="cl-name">
+                  {row.name}
+                  {row.isMe && <span className="bpg-you">you</span>}
+                </span>
+                <span className="cl-amt">
+                  {row.purchasedCoins} coins · owes <b>R{row.purchasedCoins}</b>
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {buyConfirm != null && (
+        <BuyConfirmSheet
+          amount={buyConfirm}
+          onConfirm={() => handleBuyConfirmed(buyConfirm)}
+          onCancel={() => setBuyConfirm(null)}
+        />
+      )}
     </CollapsibleSection>
+  );
+}
+
+// Buy-coins control next to the bankroll: quick-pick chips (+10 / +25 / +50), a
+// whole-number input, and a buy button that queues the amount into the
+// confirmation sheet. `remaining` is the cap allowance (null = unlimited); chips
+// and the input are clamped to it so a player can't queue more than allowed.
+// A single button that pops the amount picker open — buying is opt-in, so it
+// sits as one quiet button next to the bankroll until the player taps to buy.
+function BuyCoinsControl({
+  remaining,
+  onQueue,
+}: {
+  remaining: number | null;
+  onQueue: (amount: number) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [amountStr, setAmountStr] = useState("");
+  const QUICK = [10, 25, 50];
+  const unlimited = remaining === null;
+  const allowance = remaining ?? Infinity;
+  const exhausted = !unlimited && allowance < 1;
+
+  const amount = Math.floor(Number(amountStr));
+  const valid = Number.isInteger(amount) && amount >= 1 && amount <= allowance;
+
+  // Lock body scroll + Escape-to-close while the picker sheet is open.
+  useEffect(() => {
+    if (!open) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setOpen(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => {
+      document.body.style.overflow = prev;
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+
+  // Picking an amount closes this picker and hands off to the confirmation
+  // sheet (the real-money guard) via onQueue.
+  function queue(n: number) {
+    setOpen(false);
+    setAmountStr("");
+    onQueue(n);
+  }
+
+  return (
+    <>
+      <button
+        type="button"
+        className="buy-coins-btn"
+        disabled={exhausted}
+        onClick={() => setOpen(true)}
+      >
+        <span className="buy-coins-title">🪙 Buy more coins</span>
+        <span className="buy-coins-allow">
+          {exhausted
+            ? "Cap reached"
+            : unlimited
+              ? "R1 each"
+              : `${allowance} left · R1 each`}
+        </span>
+      </button>
+
+      {open && !exhausted && (
+        <div
+          className="buy-sheet-backdrop"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Buy more coins"
+          onClick={() => setOpen(false)}
+        >
+          <div className="buy-sheet" onClick={(e) => e.stopPropagation()}>
+            <div className="buy-pick-head">
+              <span className="buy-coins-title">🪙 Buy more coins</span>
+              <span className="buy-coins-allow">
+                {unlimited
+                  ? "Unlimited · R1 each"
+                  : `${allowance} left · R1 each`}
+              </span>
+            </div>
+            <div className="buy-coins-chips">
+              {QUICK.map((q) => {
+                const disabled = !unlimited && q > allowance;
+                return (
+                  <button
+                    key={q}
+                    type="button"
+                    className="buy-chip"
+                    disabled={disabled}
+                    onClick={() => queue(q)}
+                  >
+                    +{q}
+                  </button>
+                );
+              })}
+            </div>
+            <div className="buy-coins-custom">
+              <input
+                type="number"
+                inputMode="numeric"
+                min={1}
+                max={unlimited ? undefined : allowance}
+                step={1}
+                placeholder="Amount"
+                value={amountStr}
+                onChange={(e) => setAmountStr(e.target.value)}
+              />
+              <button
+                type="button"
+                className="btn"
+                disabled={!valid}
+                onClick={() => queue(amount)}
+              >
+                Buy
+              </button>
+            </div>
+            <button
+              type="button"
+              className="btn ghost"
+              onClick={() => setOpen(false)}
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
+// The required confirmation before any purchase. Renders as a bottom-anchored
+// sheet (mobile-first) that fits without scrolling. Copy is approved verbatim in
+// the PRD: short, light-hearted, and spells out the real Rand owed.
+function BuyConfirmSheet({
+  amount,
+  onConfirm,
+  onCancel,
+}: {
+  amount: number;
+  onConfirm: () => void;
+  onCancel: () => void;
+}) {
+  useEffect(() => {
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onCancel();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => {
+      document.body.style.overflow = prev;
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [onCancel]);
+
+  return (
+    <div
+      className="buy-sheet-backdrop"
+      role="dialog"
+      aria-modal="true"
+      aria-label="Confirm coin purchase"
+      onClick={onCancel}
+    >
+      <div className="buy-sheet" onClick={(e) => e.stopPropagation()}>
+        <p className="buy-sheet-copy">
+          🎲 <b>{amount} coins = R{amount}</b> into the pot. Real money, you sort
+          it out offline. No take-backs, and coins don’t boost your score, only
+          winning bets do.
+        </p>
+        <div className="buy-sheet-actions">
+          <button type="button" className="btn big" onClick={onConfirm}>
+            Buy {amount}
+          </button>
+          <button type="button" className="btn ghost" onClick={onCancel}>
+            Nah
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Live World Cup games with running scores, shown atop the bets so players can
+// follow the matches their open bets ride on. `games` is the public
+// recentMatches feed (live + finished); we keep only the in-play ones, and
+// render nothing while loading or when no game is live.
+function LiveGamesStrip({
+  games,
+}: {
+  games: MatchResultLive[] | undefined;
+}) {
+  const live = (games ?? []).filter((m) => m.live);
+  if (live.length === 0) return null;
+  return (
+    <>
+      <h4 className="bet-subhead">
+        Live now
+        <span className="bet-subhead-note">
+          {" "}
+          · {live.length} game{live.length === 1 ? "" : "s"} in play
+        </span>
+      </h4>
+      <div className="live-games">
+        {live.map((m) => (
+          <div key={m.id} className="lg-row">
+            <div className="lg-side">
+              <span className="lg-flag">{m.homeFlag ?? "🏳️"}</span>
+              <span className="lg-name">{m.homeTeam}</span>
+            </div>
+            <div className="lg-score">
+              <span className="lg-nums">
+                {m.homeGoals ?? 0}
+                <span className="lg-dash">–</span>
+                {m.awayGoals ?? 0}
+              </span>
+              <span className="lg-live">● Live</span>
+            </div>
+            <div className="lg-side r">
+              <span className="lg-name">{m.awayTeam}</span>
+              <span className="lg-flag">{m.awayFlag ?? "🏳️"}</span>
+            </div>
+            <span className="lg-stage">{m.stage}</span>
+          </div>
+        ))}
+      </div>
+    </>
   );
 }
 

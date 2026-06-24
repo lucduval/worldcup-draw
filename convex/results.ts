@@ -600,9 +600,13 @@ export const standings = query({
       // Fold the player's bankroll into the score. computeBankroll already
       // floors at 0, so a cold betting run never drags a player below their pure
       // draw score.
+      // purchasedCoins is passed for the shared signature but deliberately does
+      // not affect the scored `bankroll` we read here — buying coins never moves
+      // the leaderboard, only winning/losing bets staked with them do.
       const bank = bettingOn
         ? computeBankroll(
             startingPot,
+            p.purchasedCoins ?? 0,
             betsByPlayer.get(p._id) ?? [],
             matchByExtId,
           )

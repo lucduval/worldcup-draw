@@ -193,6 +193,65 @@ export function clampStartingPot(pot: number | undefined): number {
   return Math.min(STARTING_POT_MAX, Math.max(0, Math.round(pot)));
 }
 
+// ── Coin re-buy cap ──────────────────────────────────────────────────────────
+// A player can buy more coins mid-tournament (1 coin = R1, settled offline).
+// Bought coins top up what a player can stake but never their leaderboard score
+// (see computeBankroll in betting.ts). The host controls re-buys with one knob
+// that has three states, stored unambiguously on the room:
+//   off       — buying disabled (the default for every existing and new room).
+//   unlimited — any whole amount allowed.
+//   limited   — cumulative purchased coins may not exceed `cap`.
+// On the room: `purchaseUnlimited === true` ⇒ unlimited; else a positive
+// `purchaseCap` ⇒ that ceiling; else (absent/0) ⇒ off.
+export type PurchaseCap =
+  | { kind: "off" }
+  | { kind: "unlimited" }
+  | { kind: "limited"; cap: number };
+
+export function purchaseCapOf(room: {
+  purchaseCap?: number;
+  purchaseUnlimited?: boolean;
+}): PurchaseCap {
+  if (room.purchaseUnlimited) return { kind: "unlimited" };
+  if (room.purchaseCap != null && room.purchaseCap > 0)
+    return { kind: "limited", cap: Math.floor(room.purchaseCap) };
+  return { kind: "off" };
+}
+
+// How many more coins a player may buy under the cap. `null` = unlimited.
+export function remainingAllowance(
+  cap: PurchaseCap,
+  alreadyPurchased: number,
+): number | null {
+  if (cap.kind === "off") return 0;
+  if (cap.kind === "unlimited") return null;
+  return Math.max(0, cap.cap - alreadyPurchased);
+}
+
+// Validate a re-buy request against the room cap and the player's existing
+// cumulative purchased total. Whole numbers ≥ 1 only; cumulative purchased may
+// never exceed a numeric cap; "unlimited" bypasses the ceiling; "off" forbids
+// buying entirely. The single source of truth for the buyCoins mutation and the
+// client's buy control.
+export function validatePurchase(
+  cap: PurchaseCap,
+  alreadyPurchased: number,
+  amount: number,
+): { ok: true } | { ok: false; error: string } {
+  if (cap.kind === "off")
+    return { ok: false, error: "Buying coins is off for this room." };
+  if (!Number.isInteger(amount) || amount < 1)
+    return { ok: false, error: "Buy a whole number of coins (at least 1)." };
+  if (cap.kind === "unlimited") return { ok: true };
+  const remaining = cap.cap - alreadyPurchased;
+  if (amount > remaining)
+    return {
+      ok: false,
+      error: `That's over the buy cap — you can buy ${Math.max(0, remaining)} more.`,
+    };
+  return { ok: true };
+}
+
 // Global ranking is simply the POOL array order: Tier-1 best-first, then Tier 2,
 // then Tier 3. We use it to trim and re-seed the field to the player count.
 export const RANK_BY_NAME: Record<string, number> = Object.fromEntries(

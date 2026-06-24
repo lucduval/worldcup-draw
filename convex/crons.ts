@@ -3,11 +3,13 @@ import { internal } from "./_generated/api";
 
 const crons = cronJobs();
 
-// Keep World Cup results fresh. football-data.org's free tier allows plenty of
-// headroom for a pull every 30 minutes.
+// Keep World Cup results fresh. football-data.org's free tier allows 10
+// requests/minute; each run spends 2 (matches + standings), so a once-a-minute
+// pull stays well inside the limit while keeping live scores as fresh as the
+// free tier permits.
 crons.interval(
   "sync world cup results",
-  { minutes: 30 },
+  { minutes: 1 },
   internal.results.syncResults,
   {},
 );

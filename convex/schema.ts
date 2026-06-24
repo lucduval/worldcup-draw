@@ -48,6 +48,16 @@ export default defineSchema({
     // Optional so pre-existing rooms read as "betting off" (undefined ⇒ 0) and
     // never silently gain the feature. New rooms default to STARTING_POT_DEFAULT.
     startingPot: v.optional(v.number()),
+    // Host knob for mid-tournament coin re-buys (see pool.ts `purchaseCapOf`).
+    // Three states, stored unambiguously: `purchaseUnlimited === true` ⇒
+    // unlimited; else a positive `purchaseCap` ⇒ that per-player ceiling; else
+    // (both absent) ⇒ Off. Off is the default for all existing and new rooms, so
+    // a game never silently gains real-money re-buys. Independent of
+    // `startingPot` (every player gets the same allowance on top of the free
+    // pot) and NOT locked by bets — the host can adjust it any time the room
+    // isn't mid-draw (see setPurchaseCap).
+    purchaseCap: v.optional(v.number()),
+    purchaseUnlimited: v.optional(v.boolean()),
     // Legacy host-toggled bet visibility (superseded by `betVisibility`). Kept
     // for backward-compatible reads: `betVisibilityOf` falls back to it (public
     // when true, hidden otherwise) for rooms created before `betVisibility`.
@@ -88,6 +98,10 @@ export default defineSchema({
     // walk-through. Drives per-player spoiler gating and the "hasn't watched
     // yet" reminder. `undefined` = hasn't watched (or live mode).
     watchedAt: v.optional(v.number()),
+    // Cumulative coins this seat has bought mid-tournament (see betting.ts
+    // buyCoins). Adds to what the player can stake (Available) but never to
+    // their leaderboard score. Absent ⇒ 0. Wiped on re-draw with the bets.
+    purchasedCoins: v.optional(v.number()),
   })
     .index("by_room", ["roomId"])
     .index("by_user", ["userId"]), // powers each account's "My games" list
