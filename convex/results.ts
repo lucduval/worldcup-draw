@@ -463,6 +463,13 @@ function stageLabel(stage: string): string {
   return STAGE_LABEL[stage] ?? "Match";
 }
 
+// A match is in progress. football-data.org reports the in-play state as "LIVE"
+// (and, depending on tier/version, "IN_PLAY" or "PAUSED" at half-time) - accept
+// all of them so the Results page and the betting "Live now" strip light up.
+function isLiveStatus(status: string): boolean {
+  return status === "LIVE" || status === "IN_PLAY" || status === "PAUSED";
+}
+
 // Public: matches that have kicked off (live or finished), newest first, for the
 // Results page. Scheduled fixtures live on the Fixtures page, so we drop them.
 export const recentMatches = query({
@@ -475,7 +482,7 @@ export const recentMatches = query({
       id: m.extId,
       stage: stageLabel(m.stage),
       status: m.status,
-      live: m.status === "IN_PLAY" || m.status === "PAUSED",
+      live: isLiveStatus(m.status),
       utcDate: m.utcDate,
       homeTeam: m.homeTeam,
       awayTeam: m.awayTeam,
@@ -483,7 +490,9 @@ export const recentMatches = query({
       awayFlag: flagFor(m.awayTeam),
       homeGoals: m.homeGoals ?? null,
       awayGoals: m.awayGoals ?? null,
-      winner: m.winner ?? null,
+      // The feed reports the leading side as `winner` mid-match; don't paint a
+      // result as decided while it's still being played.
+      winner: isLiveStatus(m.status) ? null : (m.winner ?? null),
     }));
   },
 });
