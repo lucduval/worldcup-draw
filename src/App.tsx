@@ -87,7 +87,7 @@ function FixturesPage() {
           full schedule.
         </p>
       </header>
-      <Fixtures />
+      <Fixtures id="fixtures-page" defaultOpen />
     </>
   );
 }

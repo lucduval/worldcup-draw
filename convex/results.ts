@@ -452,6 +452,7 @@ export const upsertGroupStandings = internalMutation({
 // Map football-data stage codes to friendly labels for the Results page.
 const STAGE_LABEL: Record<string, string> = {
   GROUP_STAGE: "Group stage",
+  LAST_32: "Round of 32",
   LAST_16: "Round of 16",
   ROUND_OF_16: "Round of 16",
   QUARTER_FINALS: "Quarter-final",
@@ -494,6 +495,36 @@ export const recentMatches = query({
       // result as decided while it's still being played.
       winner: isLiveStatus(m.status) ? null : (m.winner ?? null),
     }));
+  },
+});
+
+// Public: knockout fixtures whose teams are already decided, including ones that
+// haven't kicked off yet (unlike `recentMatches`, which hides scheduled games).
+// The Fixtures page overlays these onto its static bracket so slot labels like
+// "1C vs 2F" resolve to real teams as each round of the draw fills in. Only
+// non-group matches are returned, so the kickoff instant is a unique join key
+// (knockout games never start simultaneously). The sync only stores matches once
+// both teams are named, so every row here already carries real teams.
+export const knockoutFixtures = query({
+  args: {},
+  handler: async (ctx) => {
+    const all = await ctx.db.query("matches").collect();
+    return all
+      .filter((m) => m.stage !== "GROUP_STAGE")
+      .map((m) => ({
+        stage: stageLabel(m.stage),
+        utcDate: m.utcDate,
+        status: m.status,
+        live: isLiveStatus(m.status),
+        homeTeam: m.homeTeam,
+        awayTeam: m.awayTeam,
+        homeFlag: flagFor(m.homeTeam),
+        awayFlag: flagFor(m.awayTeam),
+        homeGoals: m.homeGoals ?? null,
+        awayGoals: m.awayGoals ?? null,
+        // Don't paint a result as decided while the match is still being played.
+        winner: isLiveStatus(m.status) ? null : (m.winner ?? null),
+      }));
   },
 });
 

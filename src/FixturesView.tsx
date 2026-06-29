@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
+import { useQuery } from "convex/react";
+import { api } from "../convex/_generated/api";
 import {
-  FIXTURES,
   Fixture,
   ROUND_LABEL,
   flagFor,
@@ -8,6 +9,7 @@ import {
   sastTime,
   isUpcoming,
   involves,
+  resolveFixtures,
 } from "./fixtures";
 import { CollapsibleSection } from "./shared";
 
@@ -16,9 +18,13 @@ const NEXT_COUNT = 5;
 export default function Fixtures({
   myTeams,
   owners,
+  id = "fixtures",
+  defaultOpen = false,
 }: {
   myTeams?: string[];
   owners?: Record<string, string>;
+  id?: string;
+  defaultOpen?: boolean;
 }) {
   const owns = owners ?? {};
   const [open, setOpen] = useState(false);
@@ -44,25 +50,40 @@ export default function Fixtures({
   const teamSet = useMemo(() => new Set(myTeams ?? []), [myTeams]);
   const hasTeams = teamSet.size > 0;
 
+  // Resolve knockout slot labels ("1C vs 2F") to the real teams once the live
+  // feed has them; falls back to the static bracket while the query is loading.
+  const knockout = useQuery(api.results.knockoutFixtures);
+  const fixtures = useMemo(() => {
+    const byUtc = new Map(
+      (knockout ?? []).map((m) => [m.utcDate, { home: m.homeTeam, away: m.awayTeam }]),
+    );
+    return resolveFixtures(byUtc);
+  }, [knockout]);
+
   const { strip, stripLabel } = useMemo(() => {
-    const upcoming = FIXTURES.filter((f) => isUpcoming(f.utc, now));
+    const upcoming = fixtures.filter((f) => isUpcoming(f.utc, now));
     if (hasTeams) {
       const mine = upcoming.filter((f) => involves(f, teamSet));
       if (mine.length)
         return { strip: mine.slice(0, NEXT_COUNT), stripLabel: "Your teams next" };
     }
     return { strip: upcoming.slice(0, NEXT_COUNT), stripLabel: "Next matches" };
-  }, [now, hasTeams, teamSet]);
+  }, [fixtures, now, hasTeams, teamSet]);
 
   // Full schedule: drop fixtures that have already kicked off (same upcoming
   // rule as the strip), then optionally narrow to the viewer's own teams.
   const panelList = useMemo(() => {
-    const upcoming = FIXTURES.filter((f) => isUpcoming(f.utc, now));
+    const upcoming = fixtures.filter((f) => isUpcoming(f.utc, now));
     return mineOnly ? upcoming.filter((f) => involves(f, teamSet)) : upcoming;
-  }, [mineOnly, teamSet, now]);
+  }, [fixtures, mineOnly, teamSet, now]);
 
   return (
-    <CollapsibleSection id="fixtures" title="Fixtures" subtitle="all times SAST">
+    <CollapsibleSection
+      id={id}
+      title="Fixtures"
+      subtitle="all times SAST"
+      defaultOpen={defaultOpen}
+    >
       <div className="fx-card">
         <div className="fx-cardhead">
           <span className="fx-cardlabel">{stripLabel}</span>

@@ -197,3 +197,23 @@ export function isUpcoming(utc: string, now: number): boolean {
 export function involves(f: Fixture, teams: Set<string>): boolean {
   return f.teamsKnown && (teams.has(f.home) || teams.has(f.away));
 }
+
+// A knockout pairing resolved from the live feed, keyed by kickoff instant.
+export type ResolvedPairing = { home: string; away: string };
+
+// Overlay decided knockout teams onto the static bracket. The static schedule
+// owns kickoff time, venue and round; the live feed owns who's actually playing
+// once the draw fills in. We join on the kickoff instant (utc) - knockout games
+// never start simultaneously, so it's a unique key - and only touch fixtures
+// whose teams aren't known yet (the group stage already carries real teams).
+// Home/away orientation follows the feed, which can differ from the slot label.
+// A round that hasn't been drawn yet simply has no entry and keeps its label.
+export function resolveFixtures(byUtc: Map<string, ResolvedPairing>): Fixture[] {
+  if (byUtc.size === 0) return FIXTURES;
+  return FIXTURES.map((f) => {
+    if (f.teamsKnown) return f;
+    const live = byUtc.get(f.utc);
+    if (!live) return f;
+    return { ...f, home: live.home, away: live.away, teamsKnown: true };
+  });
+}
