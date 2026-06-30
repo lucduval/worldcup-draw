@@ -141,8 +141,17 @@ export default defineSchema({
     status: v.string(), // FINISHED, SCHEDULED, IN_PLAY, ...
     homeTeam: v.string(),
     awayTeam: v.string(),
+    // The result score after 90' + extra time, EXCLUDING any shootout. The feed's
+    // `fullTime` folds penalties in for shootout games (e.g. 4-5), so for those we
+    // store regulation+ET instead (the level 1-1) and keep the shootout separate.
     homeGoals: v.optional(v.number()),
     awayGoals: v.optional(v.number()),
+    // Penalty shootout tally, present only for matches that went to penalties.
+    penaltiesHome: v.optional(v.number()),
+    penaltiesAway: v.optional(v.number()),
+    // How the match was decided: "REGULAR" | "EXTRA_TIME" | "PENALTY_SHOOTOUT".
+    // Drives the FT/AET tag and whether a shootout actually happened.
+    duration: v.optional(v.string()),
     // Result once finished: which side took the points. Knockouts are decided
     // by the final result (after ET/penalties), so they're never a draw.
     winner: v.optional(

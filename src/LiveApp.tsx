@@ -2388,6 +2388,12 @@ function LiveGamesStrip({
                 <span className="lg-dash">–</span>
                 {m.awayGoals ?? 0}
               </span>
+              {typeof m.penaltiesHome === "number" &&
+                typeof m.penaltiesAway === "number" && (
+                  <span className="lg-pens">
+                    Pens: {m.penaltiesHome}–{m.penaltiesAway}
+                  </span>
+                )}
               <span className="lg-live">● Live</span>
             </div>
             <div className="lg-side r">

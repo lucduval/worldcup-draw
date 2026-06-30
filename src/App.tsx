@@ -240,6 +240,14 @@ type MatchResult = NonNullable<
   ReturnType<typeof useQuery<typeof api.results.recentMatches>>
 >[number];
 
+// Full-time tag: "AET" once a match goes past 90' (extra time or a shootout),
+// otherwise the plain "FT". The shootout score itself shows on its own line.
+function resultTag(duration: string | null): string {
+  return duration === "EXTRA_TIME" || duration === "PENALTY_SHOOTOUT"
+    ? "AET"
+    : "FT";
+}
+
 function ResultRow({ m }: { m: MatchResult }) {
   const hasScore = m.homeGoals !== null && m.awayGoals !== null;
   return (
@@ -261,10 +269,16 @@ function ResultRow({ m }: { m: MatchResult }) {
         ) : (
           <span className="res-vs">v</span>
         )}
+        {typeof m.penaltiesHome === "number" &&
+          typeof m.penaltiesAway === "number" && (
+            <span className="res-pens">
+              Penalties: {m.penaltiesHome}–{m.penaltiesAway}
+            </span>
+          )}
         {m.live ? (
           <span className="res-live">● Live</span>
         ) : (
-          <span className="res-ft">FT</span>
+          <span className="res-ft">{resultTag(m.duration)}</span>
         )}
       </div>
 

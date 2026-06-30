@@ -56,6 +56,16 @@ describe("computeBankroll", () => {
     expect(sitter.bankroll).toBe(30);
   });
 
+  test("(f) a knockout won on penalties pays the winning side even though normal time was level", () => {
+    // The feed records the full-time goals as level (1–1) but sets `winner` to
+    // the shootout victor. Settlement keys off `winner` only — it never compares
+    // goals — so a HOME bet wins and an AWAY bet loses on a penalty result.
+    const won = computeBankroll(0, 10, [bet("HOME", 10, 2)], finished("HOME"));
+    expect(won.settledNet).toBe(10); // round(10×2) − 10
+    const lost = computeBankroll(0, 10, [bet("AWAY", 10, 2)], finished("HOME"));
+    expect(lost.settledNet).toBe(-10);
+  });
+
   test("(e) available never goes negative even when a re-synced loss exceeds the raw sum", () => {
     // settledNet −10 (lost a 10 stake) plus a 5 pending stake against a free pot
     // of 10 and no purchases ⇒ raw 10 − 10 − 5 = −5, floored to 0.

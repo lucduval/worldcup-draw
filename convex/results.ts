@@ -86,7 +86,14 @@ export const syncResults = internalAction({
         awayTeam: { name: string | null };
         score: {
           winner: "HOME_TEAM" | "AWAY_TEAM" | "DRAW" | null;
+          duration?: "REGULAR" | "EXTRA_TIME" | "PENALTY_SHOOTOUT";
+          // `fullTime` folds in penalties for shootout games; `regularTime` +
+          // `extraTime` give the true level score, and `penalties` the shootout.
+          // regularTime/extraTime/penalties are present only past regulation.
           fullTime: { home: number | null; away: number | null };
+          regularTime?: { home: number | null; away: number | null };
+          extraTime?: { home: number | null; away: number | null };
+          penalties?: { home: number | null; away: number | null };
         };
       }>;
     };
@@ -96,15 +103,34 @@ export const syncResults = internalAction({
     const all = body.matches ?? [];
     const matches = all
       .filter((m) => m.homeTeam?.name && m.awayTeam?.name)
-      .map((m) => ({
+      .map((m) => {
+        // For a shootout, `fullTime` includes the penalty goals, so derive the
+        // true result score from regulation + extra time. For every other match
+        // `fullTime` already is the result (regulation, or after ET).
+        const shootout = m.score.duration === "PENALTY_SHOOTOUT";
+        const reg = m.score.regularTime;
+        const et = m.score.extraTime;
+        const homeGoals =
+          shootout && reg
+            ? (reg.home ?? 0) + (et?.home ?? 0)
+            : (m.score.fullTime.home ?? undefined);
+        const awayGoals =
+          shootout && reg
+            ? (reg.away ?? 0) + (et?.away ?? 0)
+            : (m.score.fullTime.away ?? undefined);
+        return {
         extId: m.id,
         stage: m.stage,
         status: m.status,
         utcDate: m.utcDate,
         homeTeam: canonicalTeam(m.homeTeam.name as string),
         awayTeam: canonicalTeam(m.awayTeam.name as string),
-        homeGoals: m.score.fullTime.home ?? undefined,
-        awayGoals: m.score.fullTime.away ?? undefined,
+        homeGoals,
+        awayGoals,
+        // Only carry a shootout tally for matches that actually went to penalties.
+        penaltiesHome: shootout ? (m.score.penalties?.home ?? undefined) : undefined,
+        penaltiesAway: shootout ? (m.score.penalties?.away ?? undefined) : undefined,
+        duration: m.score.duration ?? undefined,
         winner:
           m.score.winner === "HOME_TEAM"
             ? ("HOME" as const)
@@ -113,7 +139,8 @@ export const syncResults = internalAction({
               : m.score.winner === "DRAW"
                 ? ("DRAW" as const)
                 : undefined,
-      }));
+        };
+      });
 
     await ctx.runMutation(internal.results.upsertMatches, { matches });
     console.log(`Synced ${matches.length}/${all.length} World Cup matches.`);
@@ -184,6 +211,9 @@ const matchValidator = v.object({
   awayTeam: v.string(),
   homeGoals: v.optional(v.number()),
   awayGoals: v.optional(v.number()),
+  penaltiesHome: v.optional(v.number()),
+  penaltiesAway: v.optional(v.number()),
+  duration: v.optional(v.string()),
   winner: v.optional(
     v.union(v.literal("HOME"), v.literal("AWAY"), v.literal("DRAW")),
   ),
@@ -491,6 +521,11 @@ export const recentMatches = query({
       awayFlag: flagFor(m.awayTeam),
       homeGoals: m.homeGoals ?? null,
       awayGoals: m.awayGoals ?? null,
+      // Shootout tally (null unless the match went to penalties). Shown even
+      // while live so the strip can carry a running count during a shootout.
+      penaltiesHome: m.penaltiesHome ?? null,
+      penaltiesAway: m.penaltiesAway ?? null,
+      duration: m.duration ?? null,
       // The feed reports the leading side as `winner` mid-match; don't paint a
       // result as decided while it's still being played.
       winner: isLiveStatus(m.status) ? null : (m.winner ?? null),
@@ -522,6 +557,9 @@ export const knockoutFixtures = query({
         awayFlag: flagFor(m.awayTeam),
         homeGoals: m.homeGoals ?? null,
         awayGoals: m.awayGoals ?? null,
+        penaltiesHome: m.penaltiesHome ?? null,
+        penaltiesAway: m.penaltiesAway ?? null,
+        duration: m.duration ?? null,
         // Don't paint a result as decided while the match is still being played.
         winner: isLiveStatus(m.status) ? null : (m.winner ?? null),
       }));

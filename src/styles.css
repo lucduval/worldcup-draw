@@ -684,6 +684,7 @@ footer{text-align:center;color:var(--ink);font-weight:400;font-size:12px;padding
 .res-score{display:flex;flex-direction:column;align-items:center;gap:3px;min-width:64px}
 .res-nums{font-family:'Fraunces',serif;font-size:21px;line-height:1;display:flex;align-items:center;gap:7px}
 .res-dash{color:var(--muted)}
+.res-pens{font-size:11px;letter-spacing:.2px;color:var(--muted);white-space:nowrap}
 .res-vs{color:var(--muted);font-size:13px}
 .res-ft{font-size:10px;letter-spacing:.5px;text-transform:uppercase;color:var(--muted)}
 .res-live{font-size:10px;letter-spacing:.5px;text-transform:uppercase;color:#c0392b;font-weight:600;animation:res-pulse 1.4s ease-in-out infinite}
@@ -1013,6 +1014,7 @@ footer{text-align:center;color:var(--ink);font-weight:400;font-size:12px;padding
 .lg-score{display:flex;flex-direction:column;align-items:center;gap:2px;min-width:56px}
 .lg-nums{font-family:'Fraunces',serif;font-size:19px;line-height:1;display:flex;align-items:center;gap:6px}
 .lg-dash{color:var(--muted)}
+.lg-pens{font-size:10px;letter-spacing:.2px;color:var(--muted);white-space:nowrap}
 .lg-live{font-size:9px;letter-spacing:.5px;text-transform:uppercase;color:#c0392b;font-weight:600;animation:res-pulse 1.4s ease-in-out infinite}
 .lg-stage{font-size:9px;letter-spacing:.5px;text-transform:uppercase;padding:2px 7px;border-radius:6px;background:#f0ece3;color:var(--muted);white-space:nowrap}
 @media(max-width:620px){
