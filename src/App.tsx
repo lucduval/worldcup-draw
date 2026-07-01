@@ -95,6 +95,8 @@ function FixturesPage() {
 // ── Standings page - the 12 World Cup groups, live from football-data.org ─
 function StandingsPage() {
   const groups = useQuery(api.results.groups);
+  const eliminated = useQuery(api.results.eliminatedTeams);
+  const out = useMemo(() => new Set(eliminated ?? []), [eliminated]);
   return (
     <>
       <header className="wrap">
@@ -118,7 +120,12 @@ function StandingsPage() {
         ) : (
           <div className="groups">
             {groups.map((g) => (
-              <GroupTable key={g.group} group={g.group} table={g.table} />
+              <GroupTable
+                key={g.group}
+                group={g.group}
+                table={g.table}
+                out={out}
+              />
             ))}
           </div>
         )}
@@ -134,9 +141,11 @@ type GroupTableData = NonNullable<
 function GroupTable({
   group,
   table,
+  out,
 }: {
   group: string;
   table: GroupTableData["table"];
+  out: Set<string>;
 }) {
   return (
     <section className="grouptable">
@@ -156,7 +165,11 @@ function GroupTable({
             <span className="gt-form">Form</span>
           </div>
           {table.map((r) => (
-            <div className="gt-row" key={r.teamName}>
+            <div
+              className={`gt-row${out.has(r.teamName) ? " out" : ""}`}
+              key={r.teamName}
+              title={out.has(r.teamName) ? "Out of the tournament" : undefined}
+            >
               <span className="gt-team">
                 <span className="gt-pos">{r.position}</span>
                 <span className="flag">{r.flag}</span>

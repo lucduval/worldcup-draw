@@ -576,6 +576,51 @@ export const groups = query({
   },
 });
 
+// Public: the set of team names knocked out of the tournament, derived from the
+// match feed. Used to grey out eliminated teams across the standings and squads.
+// A team is out if it (a) lost a knockout match, or (b) once every group match
+// has finished, failed to reach the knockout bracket. We defer the best-third
+// tiebreakers to the feed's own bracket resolution rather than re-deriving them:
+// a group team still alive appears as a side in at least one knockout fixture.
+export const eliminatedTeams = query({
+  args: {},
+  handler: async (ctx) => {
+    const matches = await ctx.db.query("matches").collect();
+    const out = new Set<string>();
+
+    // (a) Knockout losers are out the moment their match is decided.
+    for (const m of matches) {
+      if (m.stage === "GROUP_STAGE") continue;
+      if (m.status !== "FINISHED" || !m.winner || m.winner === "DRAW") continue;
+      out.add(m.winner === "HOME" ? m.awayTeam : m.homeTeam);
+    }
+
+    // (b) Once the whole group stage is done, any group team missing from the
+    // knockout bracket didn't advance. Stored knockout fixtures always carry
+    // real team names (placeholders are filtered on sync), so their presence is
+    // a reliable "still alive" signal. Guard on the bracket actually being
+    // populated so we don't grey everyone in the gap before the R16 draw lands.
+    const groupMatches = matches.filter((m) => m.stage === "GROUP_STAGE");
+    const knockoutMatches = matches.filter((m) => m.stage !== "GROUP_STAGE");
+    const groupDone =
+      groupMatches.length > 0 &&
+      groupMatches.every((m) => m.status === "FINISHED");
+    if (groupDone && knockoutMatches.length > 0) {
+      const alive = new Set<string>();
+      for (const m of knockoutMatches) {
+        alive.add(m.homeTeam);
+        alive.add(m.awayTeam);
+      }
+      for (const m of groupMatches) {
+        if (!alive.has(m.homeTeam)) out.add(m.homeTeam);
+        if (!alive.has(m.awayTeam)) out.add(m.awayTeam);
+      }
+    }
+
+    return [...out];
+  },
+});
+
 // ── Standings ────────────────────────────────────────────
 // 3 pts for a win, 1 for a draw, 0 for a loss. A player's African team scores
 // double. Knockouts are settled by the final result, so they're never a draw.

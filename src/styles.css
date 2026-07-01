@@ -419,6 +419,12 @@ button.shead:hover .shead-chev{color:var(--ink)}
 .stand-team{display:inline-flex;align-items:center;gap:4px;font-size:12px;color:var(--muted);background:#faf8f3;border:1px solid var(--line);border-radius:7px;padding:2px 7px}
 .stand-team .flag{font-size:14px;line-height:1}
 .stand-team.afr{background:#fbf3ea;border-color:var(--tier3);color:var(--ink);font-weight:500}
+/* Teams knocked out of the World Cup - dimmed & desaturated across the squads,
+   the in-room standings and the public group tables. Flags are emoji, so they
+   grey out via a greyscale filter rather than a colour change. */
+.drawteam.out,.stand-team.out,.gt-row.out{opacity:.45;filter:grayscale(1)}
+.drawteam.out .flag,.stand-team.out .flag,.gt-row.out .flag{filter:grayscale(1)}
+.gt-row.out .gt-name{color:var(--muted)}
 .stand-pts{font-family:'Fraunces',serif;font-size:24px;line-height:1;text-align:right;white-space:nowrap}
 .stand-pts small{display:block;font-family:'Outfit';font-size:10px;letter-spacing:1px;text-transform:uppercase;color:var(--muted);font-weight:500}
 

@@ -683,6 +683,9 @@ function Room({
   // The pot locks server-side once the first bet is placed; mirror that here so
   // the host's control disables itself instead of failing on submit.
   const potLocked = useQuery(api.rooms.potLocked, { code: room.code }) === true;
+  // Teams knocked out of the World Cup, greyed out across the squads board.
+  const eliminated = useQuery(api.results.eliminatedTeams);
+  const outTeams = useMemo(() => new Set(eliminated ?? []), [eliminated]);
   const me = players.find((p) => p.userId === viewerId);
   const myTeams = me
     ? [
@@ -1359,6 +1362,7 @@ function Room({
               now={now}
               teamsEach={TEAMS_EACH}
               entryFee={entryFee}
+              outTeams={outTeams}
             />
           ))}
         </div>
@@ -1668,6 +1672,8 @@ function Standings({
   pot: number;
 }) {
   const rows = useQuery(api.results.standings, { code });
+  const eliminated = useQuery(api.results.eliminatedTeams);
+  const outTeams = useMemo(() => new Set(eliminated ?? []), [eliminated]);
   if (rows === undefined || rows === null) return null;
 
   const anyResults = rows.some(
@@ -1705,13 +1711,26 @@ function Standings({
                 </div>
                 <div className="stand-teams">
                   {r.african && (
-                    <span className="stand-team afr" title="African pick ×2">
+                    <span
+                      className={`stand-team afr${outTeams.has(r.african.name) ? " out" : ""}`}
+                      title={
+                        outTeams.has(r.african.name)
+                          ? "Out of the tournament · African pick ×2"
+                          : "African pick ×2"
+                      }
+                    >
                       <span className="flag">{r.african.flag}</span>
                       {r.african.points}×
                     </span>
                   )}
                   {r.teams.map((t) => (
-                    <span className="stand-team" key={t.name}>
+                    <span
+                      className={`stand-team${outTeams.has(t.name) ? " out" : ""}`}
+                      key={t.name}
+                      title={
+                        outTeams.has(t.name) ? "Out of the tournament" : undefined
+                      }
+                    >
                       <span className="flag">{t.flag}</span>
                       {t.points}
                     </span>
@@ -2676,6 +2695,7 @@ function PlayerCard({
   now,
   teamsEach,
   entryFee,
+  outTeams,
 }: {
   player: RoomData["players"][number];
   isMe: boolean;
@@ -2684,6 +2704,7 @@ function PlayerCard({
   now: number;
   teamsEach: number;
   entryFee: number;
+  outTeams: Set<string>;
 }) {
   // Exactly one team per tier now, so a fixed three-slot layout reads cleanly.
   const mine = teams.filter((t) => t.ownerId === player._id);
@@ -2710,7 +2731,10 @@ function PlayerCard({
       </div>
       <div className="draw">
         {afr ? (
-          <div className="drawteam afr">
+          <div
+            className={`drawteam afr${outTeams.has(afr.name) ? " out" : ""}`}
+            title={outTeams.has(afr.name) ? "Out of the tournament" : undefined}
+          >
             <span className="flag">{afr.flag}</span>
             {afr.name}
             <span className="tag afr-tag">Africa ×2</span>
@@ -2741,8 +2765,13 @@ function PlayerCard({
           }
           const fresh =
             team.assignedAt && now < team.assignedAt + REVEAL_MS + 600;
+          const isOut = outTeams.has(team.name);
           return (
-            <div className={`drawteam${fresh ? " pop" : ""}`} key={tier}>
+            <div
+              className={`drawteam${fresh ? " pop" : ""}${isOut ? " out" : ""}`}
+              key={tier}
+              title={isOut ? "Out of the tournament" : undefined}
+            >
               <span className="flag">{team.flag}</span>
               {team.name}
               <span className="tag" style={{ background: TIER_VAR[tier] }}>
